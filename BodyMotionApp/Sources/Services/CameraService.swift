@@ -37,8 +37,10 @@ final class CameraService: NSObject, ObservableObject {
     }
 
     func start() {
-        guard !session.isRunning else { return }
-        queue.async { self.session.startRunning() }
+        // Session already started in configureSession; if stopped, restart it
+        if !session.isRunning {
+            queue.async { self.session.startRunning() }
+        }
     }
 
     func stop() {
@@ -109,6 +111,8 @@ final class CameraService: NSObject, ObservableObject {
         session.commitConfiguration()
 
         currentPosition = position
+        // Start the session immediately so the preview layer is never black
+        queue.async { self.session.startRunning() }
         DispatchQueue.main.async { self.isReady = true }
     }
 

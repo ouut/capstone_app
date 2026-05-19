@@ -11,6 +11,7 @@ final class CameraService: NSObject, ObservableObject {
 
     @Published var isReady = false
     @Published var errorMessage: String?
+    @Published var currentPosition: AVCaptureDevice.Position = .front
 
     override init() {
         super.init()
@@ -32,7 +33,7 @@ final class CameraService: NSObject, ObservableObject {
             return
         }
 
-        configureSession()
+        configureSession(position: .front)
     }
 
     func start() {
@@ -45,11 +46,44 @@ final class CameraService: NSObject, ObservableObject {
         queue.async { self.session.stopRunning() }
     }
 
-    private func configureSession() {
+    /// Switch between front and back camera
+    func switchCamera(to position: AVCaptureDevice.Position) {
+        guard position != currentPosition else { return }
+        let wasRunning = session.isRunning
+
+        session.beginConfiguration()
+
+        // Remove existing video input
+        for input in session.inputs {
+            session.removeInput(input)
+        }
+
+        guard let device = cameraDevice(for: position),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input)
+        else {
+            session.commitConfiguration()
+            DispatchQueue.main.async { self.errorMessage = "Failed to switch camera" }
+            return
+        }
+
+        session.addInput(input)
+        session.commitConfiguration()
+
+        currentPosition = position
+
+        if wasRunning {
+            queue.async { self.session.startRunning() }
+        }
+    }
+
+    // MARK: - Private
+
+    private func configureSession(position: AVCaptureDevice.Position) {
         session.beginConfiguration()
         session.sessionPreset = .medium
 
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
+        guard let device = cameraDevice(for: position),
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input)
         else {
@@ -73,7 +107,19 @@ final class CameraService: NSObject, ObservableObject {
         session.addOutput(videoOutput)
 
         session.commitConfiguration()
+
+        currentPosition = position
         DispatchQueue.main.async { self.isReady = true }
+    }
+
+    private func cameraDevice(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        let deviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .builtInUltraWideCamera]
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: deviceTypes,
+            mediaType: .video,
+            position: position
+        )
+        return discovery.devices.first
     }
 }
 

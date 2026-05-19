@@ -35,6 +35,7 @@ final class CaptureViewModel: ObservableObject {
         self.settings = settings
         setupUDP()
         observeSensorToggles()
+        observeCameraToggle()
         observeMotion()
         observeAudio()
     }
@@ -42,6 +43,9 @@ final class CaptureViewModel: ObservableObject {
     func start() {
         Task {
             await cameraService.requestPermissionAndConfigure()
+            // Apply saved camera preference
+            let targetPosition: AVCaptureDevice.Position = settings.useFrontCamera ? .front : .back
+            cameraService.switchCamera(to: targetPosition)
             cameraService.start()
             startProcessingFrames()
             udpService?.setActive(true)
@@ -105,6 +109,16 @@ final class CaptureViewModel: ObservableObject {
             .store(in: &cancellables)
 
         udpService = udp
+    }
+
+    private func observeCameraToggle() {
+        settings.$useFrontCamera
+            .dropFirst()
+            .sink { [weak self] front in
+                let pos: AVCaptureDevice.Position = front ? .front : .back
+                self?.cameraService.switchCamera(to: pos)
+            }
+            .store(in: &cancellables)
     }
 
     /// React to sensor toggle changes at runtime without restart

@@ -21,6 +21,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("前置摄像头", isOn: $viewModel.settings.useFrontCamera)
+                } header: {
+                    Text("摄像头")
+                } footer: {
+                    Text(viewModel.settings.useFrontCamera ? "当前使用前置摄像头" : "当前使用后置摄像头")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Section {
                     Picker("Mode", selection: $viewModel.settings.mode) {
                         ForEach(AppMode.allCases) { mode in
                             Text(mode.rawValue).tag(mode)

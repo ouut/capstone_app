@@ -54,6 +54,9 @@ final class AppSettings: ObservableObject {
     @Published var mode: AppMode {
         didSet { UserDefaults.standard.set(mode.rawValue, forKey: .keyMode) }
     }
+    @Published var useFrontCamera: Bool {
+        didSet { UserDefaults.standard.set(useFrontCamera, forKey: .keyUseFrontCamera) }
+    }
 
     // Individual sensor toggles — independently selectable
     @Published var sendPose: Bool {
@@ -86,6 +89,9 @@ final class AppSettings: ObservableObject {
             rawValue: UserDefaults.standard.string(forKey: .keyMode) ?? AppMode.training.rawValue
         ) ?? .training
 
+        let storedFrontCamera = UserDefaults.standard.object(forKey: .keyUseFrontCamera)
+        useFrontCamera = (storedFrontCamera as? Bool) ?? true
+
         // Default: all sensors on
         let storedPose = UserDefaults.standard.object(forKey: .keySendPose)
         sendPose = (storedPose as? Bool) ?? true
@@ -105,6 +111,7 @@ private extension String {
     static let keyModelURL = "model_url"
     static let keyMode = "app_mode"
     static let keySendPose = "send_pose"
+    static let keyUseFrontCamera = "use_front_camera"
     static let keySendMotion = "send_motion"
     static let keySendAudio = "send_audio"
 }

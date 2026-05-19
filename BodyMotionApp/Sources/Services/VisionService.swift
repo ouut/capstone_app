@@ -63,13 +63,12 @@ final class VisionService {
         guard let results = request.results else { return [] }
 
         return results.enumerated().map { (index, observation) in
-            PoseData(
+            let bbox = observation.boundingBox  // normalized CGRect (0-1)
+            return PoseData(
                 timestamp: timestamp,
                 joints: [
-                    "person_\(index)_uuid": JointPoint(
-                        x: 0, y: 0, z: nil,
-                        confidence: Double(observation.confidence)
-                    )
+                    "bbox_minX": JointPoint(x: bbox.minX, y: bbox.minY, z: nil, confidence: Double(observation.confidence)),
+                    "bbox_maxX": JointPoint(x: bbox.maxX, y: bbox.maxY, z: nil, confidence: Double(observation.confidence)),
                 ]
             )
         }
@@ -96,13 +95,15 @@ final class VisionService {
     private func map3DPoints(_ points: [VNHumanBodyPose3DObservation.JointName: VNRecognizedPoint3D],
                              timestamp: TimeInterval) -> PoseData? {
         let joints: [String: JointPoint] = points.reduce(into: [:]) { dict, entry in
-            // position is simd_float4x4 — translation is column 3
+            // location (inherited from VNRecognizedPoint) is the 2D image-space coordinate (0-1)
+            // position is the 3D camera-space transform (meters)
+            let loc = entry.value.location
             let pos = entry.value.position
             dict["\(entry.key)"] = JointPoint(
-                x: Double(pos.columns.3.x),
-                y: Double(pos.columns.3.y),
-                z: Double(pos.columns.3.z),
-                confidence: 1.0
+                x: Double(loc.x),
+                y: Double(loc.y),
+                z: Double(pos.columns.3.z),  // depth in meters
+                confidence: Double(entry.value.confidence)
             )
         }
         guard !joints.isEmpty else { return nil }

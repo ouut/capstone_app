@@ -62,8 +62,10 @@ final class VisionService {
 
         guard let results = request.results else { return [] }
 
-        return results.enumerated().map { (index, observation) in
-            let bbox = observation.boundingBox  // normalized CGRect (0-1)
+        return results.enumerated().compactMap { (index, observation) -> PoseData? in
+            // Compute bounding box from instance mask pixels
+            // instanceMask is a CVPixelBuffer directly in this SDK version
+            guard let bbox = computeMaskBBox(observation.instanceMask) else { return nil }
             return PoseData(
                 timestamp: timestamp,
                 joints: [
@@ -72,6 +74,47 @@ final class VisionService {
                 ]
             )
         }
+    }
+
+    /// Scan the mask pixel buffer and return a normalized bounding box of non-zero pixels
+    private func computeMaskBBox(_ maskBuffer: CVPixelBuffer) -> (minX: Double, minY: Double, maxX: Double, maxY: Double)? {
+        CVPixelBufferLockBaseAddress(maskBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(maskBuffer, .readOnly) }
+
+        let width = CVPixelBufferGetWidth(maskBuffer)
+        let height = CVPixelBufferGetHeight(maskBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(maskBuffer)
+        guard let base = CVPixelBufferGetBaseAddress(maskBuffer) else { return nil }
+
+        let ptr = base.assumingMemoryBound(to: Float32.self)
+        let floatsPerRow = bytesPerRow / MemoryLayout<Float32>.size
+
+        var minX = width, minY = height, maxX = 0, maxY = 0
+        var found = false
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let val = ptr[y * floatsPerRow + x]
+                if val > 0 {
+                    if x < minX { minX = x }
+                    if x > maxX { maxX = x }
+                    if y < minY { minY = y }
+                    if y > maxY { maxY = y }
+                    found = true
+                }
+            }
+        }
+
+        guard found else { return nil }
+
+        // Add small padding and normalize to 0-1
+        let pad = 4
+        return (
+            minX: Double(max(minX - pad, 0)) / Double(width),
+            minY: Double(max(minY - pad, 0)) / Double(height),
+            maxX: Double(min(maxX + pad, width - 1)) / Double(width),
+            maxY: Double(min(maxY + pad, height - 1)) / Double(height)
+        )
     }
 
     // MARK: - Helpers
@@ -95,15 +138,23 @@ final class VisionService {
     private func map3DPoints(_ points: [VNHumanBodyPose3DObservation.JointName: VNRecognizedPoint3D],
                              timestamp: TimeInterval) -> PoseData? {
         let joints: [String: JointPoint] = points.reduce(into: [:]) { dict, entry in
-            // location (inherited from VNRecognizedPoint) is the 2D image-space coordinate (0-1)
-            // position is the 3D camera-space transform (meters)
-            let loc = entry.value.location
+            // position is a simd_float4x4 camera-space transform; column 3 is translation (x,y,z in meters)
             let pos = entry.value.position
+            let x_m = Double(pos.columns.3.x)
+            let y_m = Double(pos.columns.3.y)
+            let z_m = max(Double(pos.columns.3.z), 0.1) // avoid division by zero
+
+            // Pinhole projection to normalized 0-1 screen coords
+            // Assumes ~60° horizontal FOV → visible width ≈ 1.15× depth
+            let fovScale: Double = 1.15
+            let nx = 0.5 + (x_m / z_m) / fovScale
+            let ny = 0.5 - (y_m / z_m) / fovScale  // flip Y (camera Y is up, screen Y is down)
+
             dict["\(entry.key)"] = JointPoint(
-                x: Double(loc.x),
-                y: Double(loc.y),
-                z: Double(pos.columns.3.z),  // depth in meters
-                confidence: Double(entry.value.confidence)
+                x: nx,
+                y: ny,
+                z: z_m,
+                confidence: 1.0
             )
         }
         guard !joints.isEmpty else { return nil }

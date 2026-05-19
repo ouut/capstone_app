@@ -52,8 +52,15 @@ final class CaptureViewModel: ObservableObject {
 
             if settings.mode == .training {
                 recordingService.start()
+                statusText = cameraService.isReady ? "Camera ready" : "Camera unavailable"
             } else {
                 loadModel()
+            }
+
+            // If WebRTC isn't configured, show final status now.
+            // When WebRTC is configured, its connection state sink will override this.
+            if webRTCService == nil && statusText == "Initializing..." {
+                statusText = cameraService.isReady ? "Camera ready" : "Camera unavailable"
             }
         }
     }
@@ -69,7 +76,11 @@ final class CaptureViewModel: ObservableObject {
     }
 
     func loadModel() {
-        guard settings.mode == .game, !settings.modelURL.isEmpty else { return }
+        guard settings.mode == .game else { return }
+        guard !settings.modelURL.isEmpty else {
+            statusText = "No model URL configured"
+            return
+        }
         Task {
             do {
                 try await modelService.downloadAndLoad(from: settings.modelURL)

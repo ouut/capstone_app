@@ -1,0 +1,24 @@
+name: collection_app
+options:
+  bundleIdPrefix: com.bodyMotion
+  deploymentTarget:
+    iOS: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+
+targets:
+  collection_app:
+    type: application
+    platform: iOS
+    sources:
+      - path: collection_app
+        type: group
+    settings:
+      base:
+        INFOPLIST_FILE: collection_app/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.collectionapp.bodyMotion
+        DEVELOPMENT_TEAM: "ZWG49Y3378"
+        CODE_SIGN_STYLE: Automatic

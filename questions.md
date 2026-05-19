@@ -1,11 +1,15 @@
 # Capstone App - Questions to Clarify Before Finishing
 
 ## 1. Network Protocol Decision
-WebRTC DataChannel vs UDP Socket — which one? If WebRTC, what signaling mechanism?
+WebRTC DataChannel vs UDP Socket — which one?
 
-Answer: 
-WebRTC DataChannel 
-本地的电脑或 Ubuntu 盒子上用 Node.js 跑一个最简单的 WebSocket 信令服务器（监听 localhost:3000）。然后运行 tailscale funnel 3000 
+Answer:
+已改为纯 UDP。原因：
+- 多客户端场景下 WebRTC 的点对点模型不适合（广播信令 + 单 peerConnection 瓶颈）
+- UDP 无连接特性天然支持多台 iPhone 同时发送到一台游戏主机
+- 架构更简单：无需信令服务器、无需 WebRTC SPM (125MB)、无需 SDP/ICE 状态机
+- Tailscale 已提供加密和 NAT 穿透，WebRTC 的 ICE/DTLS 层是多余的
+- 游戏主机运行 `node udp-receiver.js` (UDP 端口 5000)，iPhone 通过 Network 框架 NWConnection(.udp) 直接发送 
 
 
 ## 2. Service Discovery

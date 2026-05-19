@@ -1,11 +1,12 @@
 {
   "name": "body-motion-server",
   "version": "1.0.0",
-  "description": "Signaling + data relay server for Body Motion Game Platform",
+  "description": "UDP receiver + data relay for Body Motion Game Platform",
   "scripts": {
+    "udp": "node udp-receiver.js",
     "signaling": "node signaling-server.js",
     "data": "node data-server.js",
-    "start": "node signaling-server.js",
+    "start": "node udp-receiver.js",
     "test": "node test-signaling.js"
   },
   "dependencies": {

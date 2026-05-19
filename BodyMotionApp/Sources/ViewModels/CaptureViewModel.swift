@@ -9,7 +9,7 @@ final class CaptureViewModel: ObservableObject {
     private let recordingService = RecordingService()
     private let motionService = MotionService()
     private let audioService = AudioService()
-    private var webRTCService: WebRTCService?
+    private var udpService: UDPService?
 
     private var processingTask: Task<Void, Never>?
     private let encoder = JSONEncoder()
@@ -17,7 +17,6 @@ final class CaptureViewModel: ObservableObject {
     @Published var currentPoses: [PoseData] = []
     @Published var lastPrediction: PredictionResult?
     @Published var isConnected = false
-    @Published var isDataChannelOpen = false
     @Published var statusText = "Initializing..."
 
     @Published var latestMotion: MotionData?
@@ -34,7 +33,7 @@ final class CaptureViewModel: ObservableObject {
 
     init(settings: AppSettings) {
         self.settings = settings
-        setupWebRTC()
+        setupUDP()
         observeSensorToggles()
         observeMotion()
         observeAudio()
@@ -45,7 +44,7 @@ final class CaptureViewModel: ObservableObject {
             await cameraService.requestPermissionAndConfigure()
             cameraService.start()
             startProcessingFrames()
-            webRTCService?.setActive(true)
+            udpService?.setActive(true)
 
             if settings.sendMotion { motionService.start() }
             if settings.sendAudio  { startAudioIfPermitted() }
@@ -57,9 +56,8 @@ final class CaptureViewModel: ObservableObject {
                 loadModel()
             }
 
-            // If WebRTC isn't configured, show final status now.
-            // When WebRTC is configured, its connection state sink will override this.
-            if webRTCService == nil && statusText == "Initializing..." {
+            // If UDP isn't configured, show final status now.
+            if udpService == nil && statusText == "Initializing..." {
                 statusText = cameraService.isReady ? "Camera ready" : "Camera unavailable"
             }
         }
@@ -71,7 +69,7 @@ final class CaptureViewModel: ObservableObject {
         recordingService.stop()
         motionService.stop()
         audioService.stop()
-        webRTCService?.setActive(false)
+        udpService?.setActive(false)
         modelService.cancelDownload()
     }
 
@@ -93,31 +91,20 @@ final class CaptureViewModel: ObservableObject {
 
     // MARK: - Private
 
-    private func setupWebRTC() {
-        guard !settings.userId.isEmpty, !settings.serverIP.isEmpty else { return }
+    private func setupUDP() {
+        guard !settings.serverIP.isEmpty else { return }
 
-        let rtc = WebRTCService(
-            userId: settings.userId,
-            serverIP: settings.serverIP,
-            serverPort: settings.serverPort
-        )
-        rtc.onDataReceived = { [weak self] _ in }
-        rtc.$connectionState
+        let udp = UDPService(host: settings.serverIP, port: settings.serverPort)
+        udp.onDataReceived = { [weak self] _ in }
+        udp.$connectionState
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                self?.isConnected = (state == .connected)
+                self?.isConnected = (state == .ready)
                 self?.statusText = state.label
             }
             .store(in: &cancellables)
 
-        rtc.$dataChannelState
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] state in
-                self?.isDataChannelOpen = (state == .open)
-            }
-            .store(in: &cancellables)
-
-        webRTCService = rtc
+        udpService = udp
     }
 
     /// React to sensor toggle changes at runtime without restart
@@ -228,6 +215,6 @@ final class CaptureViewModel: ObservableObject {
 
     private func send(_ frame: SensorFrame) {
         guard let data = try? encoder.encode(frame) else { return }
-        webRTCService?.sendData(data)
+        udpService?.send(data)
     }
 }

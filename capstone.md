@@ -31,7 +31,7 @@
 |:---|:---|:---|
 | **感知层** | iPhone | 摄像头采集 + Vision 提取骨骼 + CoreMotion 姿态 + 麦克风音量 |
 | **理解层** | iPhone（本地） | Core ML 模型实时推理，将骨骼点流翻译为意图标签 |
-| **通信层** | iPhone → 游戏设备 | WebRTC DataChannel 发送意图信号 / 传感器帧 |
+| **通信层** | iPhone → 游戏设备 | UDP 直接发送意图信号 / 传感器帧 |
 
 ### 3.2 传感器数据（每帧聚合）
 
@@ -68,8 +68,8 @@
 - 搭配 CoreMotion 陀螺仪/加速度计 + 麦克风
 
 ### 4.2 配套工具
-- **信号服务器**：本地电脑或 Ubuntu 盒子跑 Node.js WebSocket 信令（端口 3000） + Tailscale Funnel 暴露公网
-- **游戏运行设备**：Mac / PC / 游戏主机（接收意图信号并驱动游戏）
+- **UDP 接收端**：本地电脑或 Ubuntu 盒子跑 `node udp-receiver.js`（端口 5000），配合 Tailscale 组网
+- **游戏运行设备**：Mac / PC / 游戏主机（接收意图信号并驱动游戏），也可兼任 UDP 接收端
 
 ---
 
@@ -83,8 +83,7 @@
 | **Core ML** | 在 iPhone 本地运行动作分类模型 |
 | **CoreMotion** | 手机姿态：加速度、陀螺仪、四元数、重力方向 |
 | **AVFoundation** | 摄像头采集 + 麦克风音量 |
-| **WebRTC** | DataChannel 低延迟数据传输 |
-| **URLSessionWebSocket** | WebSocket 信令（SDP / ICE 交换） |
+| **Network** | UDP 低延迟数据传输（NWConnection） |
 
 ### 5.2 Vision API 三选一
 
@@ -98,9 +97,12 @@ API 可通过 Settings UI 下拉选择，选中后显示中文说明。关闭骨
 
 ### 5.3 网络通信
 
-- **信令**：WebSocket (`ws://ip:port/signaling`)，注册 → SDP Offer/Answer → ICE 交换
-- **数据**：WebRTC DataChannel（无序传输、零重传，优化实时性）；DataChannel 未就绪时 WebSocket fallback
-- **服务端 IP/端口**：通过 Settings UI 手动输入，无自动发现（Bonjour/mDNS）
+- **协议**：纯 UDP，使用 iOS `Network` 框架 (`NWConnection`)，无连接建立过程，直接发送
+- **接收端**：游戏主机运行 `udp-receiver.js`（Node.js `dgram`），监听 UDP 端口接收所有 iPhone 的传感器帧
+- **多客户端**：UDP 无连接特性天然支持多台 iPhone 同时向同一主机发送数据，通过 `sender IP:port` 区分玩家
+- **优势**：零信令开销、无框架依赖（无需 WebRTC SPM）、多客户端无需额外架构改动
+- **要求**：iPhone 和游戏主机需在同一局域网（或通过 Tailscale VPN 互联），NAT 穿透由 Tailscale 处理
+- **服务端 IP/端口**：通过 Settings UI 手动输入游戏主机地址
 
 ### 5.4 模型热加载
 
@@ -129,7 +131,7 @@ API 可通过 Settings UI 下拉选择，选中后显示中文说明。关闭骨
 
 | # | 问题 | 决策 |
 |---|------|------|
-| 1 | 网络协议 | WebRTC DataChannel + WebSocket 信令 |
+| 1 | 网络协议 | 纯 UDP（iOS Network 框架），无信令服务器 |
 | 2 | 服务发现 | 手动输入 IP + 端口 |
 | 3 | 模型热加载 | 手动下载 `.mlmodelc`，URL 可配置 |
 | 4 | 动作映射 Schema | 待讨论 |
@@ -166,7 +168,7 @@ capstone_app/
 │       │   ├── VisionService.swift  # 3 个 Vision API + 骨骼映射
 │       │   ├── MotionService.swift  # CoreMotion 姿态数据
 │       │   ├── AudioService.swift   # 麦克风 RMS/Peak 音量
-│       │   ├── WebRTCService.swift  # 信令 + DataChannel
+│       │   ├── UDPService.swift     # UDP 数据发送
 │       │   ├── ModelService.swift   # Core ML 下载/编译/推理
 │       │   └── RecordingService.swift # 低分辨率视频录制
 │       ├── ViewModels/
@@ -178,9 +180,10 @@ capstone_app/
 │           └── SettingsView.swift   # 配置表单
 └── server/
     ├── package.json
-    ├── signaling-server.js       # WebSocket 信令中继
-    ├── data-server.js            # 训练数据接收（.jsonl 存储）
-    └── test-signaling.js         # 信令服务器 11 项测试
+    ├── udp-receiver.js           # UDP 数据接收 + .jsonl 存储
+    ├── signaling-server.js       # [已弃用] WebSocket 信令中继
+    ├── data-server.js            # [已弃用] WebSocket 训练数据接收
+    └── test-signaling.js         # 信令服务器测试
 ```
 
 ---
@@ -209,17 +212,20 @@ cd BodyMotionApp
 ./install.sh
 ```
 
-### 9.4 信令服务器
+### 9.4 UDP 接收端
 ```bash
 cd server
 npm install
-node signaling-server.js    # 监听 ws://0.0.0.0:3000
-npm test                    # 运行 11 项自动化测试
+node udp-receiver.js        # 监听 UDP :5000，接收所有 iPhone 数据
+# 或指定端口: UDP_PORT=9000 node udp-receiver.js
+npm test                    # 运行信令服务器测试（仅供参考）
 ```
 
-### 9.5 暴露公网
+### 9.5 Tailscale 组网
 ```bash
-tailscale funnel 3000
+# iPhone 和游戏主机安装 Tailscale 并加入同一网络
+# iPhone Settings 中填入游戏主机的 Tailscale IP (100.x.x.x)
+# UDP 数据通过 Tailscale WireGuard 加密隧道传输
 ```
 
 ---
@@ -229,9 +235,9 @@ tailscale funnel 3000
 | 组件 | 状态 | 验证 |
 |------|------|------|
 | iOS App（15 个 Swift 源文件） | ✅ 完成 | 模拟器编译通过、运行正常 |
-| WebRTC 集成 | ✅ 完成 | SPM 依赖解析成功 |
-| 信令服务器 | ✅ 完成 | 11/11 测试通过 |
-| 数据服务器 | ✅ 完成 | 代码审查通过 |
+| UDP 通信 | ✅ 完成 | Network 框架，零外部依赖 |
+| 信令服务器 | 🔲 已弃用 | 保留文件供参考 |
+| 数据服务器 | ✅ 完成 | UDP 接收端 + .jsonl 存储 |
 | 真机安装 | ⚠️ 待用户终端执行 | 签名证书已就绪 (Team: 3DGN76WC8B) |
 | 动作映射 Schema | 🔲 待讨论 | — |
 | 安全隐私 | 🔲 待讨论 | — |

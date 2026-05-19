@@ -39,9 +39,6 @@ struct SensorSelection: OptionSet {
 }
 
 final class AppSettings: ObservableObject {
-    @Published var userId: String {
-        didSet { UserDefaults.standard.set(userId, forKey: .keyUserId) }
-    }
     @Published var serverIP: String {
         didSet { UserDefaults.standard.set(serverIP, forKey: .keyServerIP) }
     }
@@ -79,9 +76,8 @@ final class AppSettings: ObservableObject {
     }
 
     init() {
-        userId = UserDefaults.standard.string(forKey: .keyUserId) ?? ""
         serverIP = UserDefaults.standard.string(forKey: .keyServerIP) ?? "192.168.1.100"
-        serverPort = UserDefaults.standard.string(forKey: .keyServerPort) ?? "3000"
+        serverPort = UserDefaults.standard.string(forKey: .keyServerPort) ?? "5000"
         modelURL = UserDefaults.standard.string(forKey: .keyModelURL) ?? ""
         visionAPI = VisionAPIType(
             rawValue: UserDefaults.standard.string(forKey: .keyVisionAPI) ?? VisionAPIType.bodyPose2D.rawValue
@@ -103,7 +99,6 @@ final class AppSettings: ObservableObject {
 }
 
 private extension String {
-    static let keyUserId = "user_id"
     static let keyServerIP = "server_ip"
     static let keyServerPort = "server_port"
     static let keyVisionAPI = "vision_api"

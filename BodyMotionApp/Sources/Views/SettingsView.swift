@@ -7,17 +7,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("User") {
-                    TextField("User ID", text: $viewModel.settings.userId)
-                        .textContentType(.username)
-                        .autocapitalization(.none)
-                }
-
-                Section("Server") {
+                Section {
                     TextField("IP Address", text: $viewModel.settings.serverIP)
                         .keyboardType(.decimalPad)
                     TextField("Port", text: $viewModel.settings.serverPort)
                         .keyboardType(.numberPad)
+                } header: {
+                    Text("游戏主机 (UDP)")
+                } footer: {
+                    Text("iPhone 将通过 UDP 直接向该地址发送传感器数据。游戏主机运行 udp-receiver.js 接收。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 Section {

@@ -28,9 +28,8 @@ targets:
       base:
         INFOPLIST_FILE: "Info.plist"
         PRODUCT_BUNDLE_IDENTIFIER: com.bodyMotion.app
-        DEVELOPMENT_TEAM: ""               # Fill in your Team ID
+        DEVELOPMENT_TEAM: "3DGN76WC8B"
         CODE_SIGN_STYLE: Automatic
-        PROVISIONING_PROFILE_SPECIFIER: ""
     preBuildScripts:
       - name: "SwiftLint (skip)"
         script: "echo 'skip'"

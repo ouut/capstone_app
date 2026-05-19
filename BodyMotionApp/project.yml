@@ -22,7 +22,7 @@ targets:
       base:
         INFOPLIST_FILE: "Info.plist"
         PRODUCT_BUNDLE_IDENTIFIER: com.bodyMotion.app
-        DEVELOPMENT_TEAM: "3DGN76WC8B"
+        DEVELOPMENT_TEAM: "ZWG49Y3378"
         CODE_SIGN_STYLE: Automatic
     preBuildScripts:
       - name: "SwiftLint (skip)"

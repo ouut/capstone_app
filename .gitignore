@@ -1,4 +1,30 @@
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Claude
 .claude/
+
+# Node.js
 node_modules/
-server/training_data/
+npm-debug.log*
+
+# Xcode - Build
+build/
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# Xcode - User
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Xcode - Archives
+*.xcarchive
+*.ipa
+
+# Swift
+*.swp
+*.orig

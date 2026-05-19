@@ -1,9 +1,0 @@
-{
-  "name": "body-motion-server",
-  "version": "1.0.0",
-  "description": "UDP receiver for Body Motion Game Platform",
-  "scripts": {
-    "start": "node udp-receiver.js",
-    "test": "node test-udp.js"
-  }
-}

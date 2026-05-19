@@ -1,7 +1,0 @@
-*.xcodeproj
-*.xcworkspace
-*.xcarchive
-build/
-DerivedData/
-*.ipa
-Pods/

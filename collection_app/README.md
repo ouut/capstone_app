@@ -1,14 +1,16 @@
 # collection_app
 
-iOS body motion capture app — tracks a person using ARKit and drives a 3D robot character in real time. Record skeletal animation data as CSV, optionally with video.
+iOS body motion capture app — tracks a person using ARKit and drives a 3D robot character in real time. Record skeletal animation data as CSV, optionally with video, and stream over UDP.
 
 ## Features
 
 - **Real-time body tracking** via ARKit `ARBodyTrackingConfiguration` (requires A12+ chip)
 - **3D character** — a robot driven by your body movements
-- **CSV recording** — captures joint positions & rotations per frame
+- **CSV recording** — captures joint positions, rotations, and camera pose per frame
 - **Optional video recording** — saves camera feed alongside skeleton data
-- **Video-to-CSV extraction** — load any recorded video to extract body pose as CSV via Vision
+- **UDP streaming** — binary body tracking data to a local server for real-time visualization
+- **Camera pose tracking** — device position and orientation recorded per frame
+- **File browser** — browse, share, and delete recordings from Settings via iOS Files picker
 
 ## Requirements
 
@@ -43,26 +45,46 @@ cd collection_app
 
 ## Settings
 
+### Recording Config
+
 | Option | Description |
 |---|---|
-| Data ID | Custom name for recordings (default: current timestamp) |
+| Data ID | Custom name appended to timestamp in filename (default: empty, uses timestamp only) |
 | Save video | Toggle to record `.mp4` alongside CSV (default: off) |
-| Select Video | Load a video file to extract body pose as CSV |
+
+### UDP Streaming
+
+| Option | Description |
+|---|---|
+| IP / Hostname | Target server address (e.g. `192.168.1.100` or `myserver.local`) |
+| Port | UDP port number (1024–65535) |
+| Send via UDP | Toggle to enable streaming during recording (default: off) |
+
+When enabled, each frame is sent as a **binary UDP packet** (2561 bytes) to the configured host:port. See [UDP Protocol](#udp-protocol) below.
+
+### Recorded Files
+
+**Browse Recordings…** — opens the iOS Files picker filtered to CSV and MP4. Select a file to share (AirDrop, save to Files, etc.) or delete.
 
 ## Output Files
 
 All files are saved to `Documents/BodyMotionRecordings/` and accessible via:
 
+- **Settings → Browse Recordings** — system file picker with share & delete
 - **iPhone Files app** → Browse → On My iPhone → collection_app
 - **Finder / iTunes** → File Sharing → collection_app
 
+### File Naming
+
+```
+{timestamp}.csv                     — empty Data ID
+{timestamp}_{name}.csv              — custom Data ID
+{timestamp}.mp4                     — video (same naming)
+```
+
+Example: `2026-05-22-143001_mysession.csv`
+
 ### CSV Format
-
-Two CSV variants are produced depending on the data source.
-
-#### 1. Live ARKit recording (`exportCSV`)
-
-Produced when tapping record during a live ARKit session.
 
 ```
 timestamp,frame,joint,pos_x,pos_y,pos_z,rot_x,rot_y,rot_z,rot_w
@@ -72,61 +94,62 @@ timestamp,frame,joint,pos_x,pos_y,pos_z,rot_x,rot_y,rot_z,rot_w
 |---|---|---|
 | `timestamp` | float (4 dp) | Seconds elapsed since recording started |
 | `frame` | int | Zero-based frame index |
-| `joint` | string | ARKit skeleton joint name (e.g. `root`, `left_hand_joint`, `right_foot_joint`) — see [ARSkeleton.JointName](https://developer.apple.com/documentation/arkit/arskeleton/jointname) for the full list of ~90 joints |
-| `pos_x`, `pos_y`, `pos_z` | float | World-space **position** (meters). Translation extracted from column 3 of the joint's 4×4 transform matrix |
-| `rot_x`, `rot_y`, `rot_z`, `rot_w` | float | World-space **rotation** as a quaternion. `rot_w` is the scalar (real) part; `rot_x/rot_y/rot_z` are the vector (imaginary) part |
+| `joint` | string | ARKit skeleton joint name (e.g. `root`, `left_hand_joint`) — see [ARSkeleton.JointName](https://developer.apple.com/documentation/arkit/arskeleton/jointname) for the full list of ~90 joints. Special value `camera` for the device pose |
+| `pos_x`, `pos_y`, `pos_z` | float | World-space **position** (meters). Translation from column 3 of the 4×4 transform matrix |
+| `rot_x`, `rot_y`, `rot_z`, `rot_w` | float | World-space **rotation** as a quaternion. `rot_w` is the scalar (real) part |
 
-The hierarchy is **flattened**: each row is one joint. A single frame produces ~90 rows (one per skeleton joint), all sharing the same `timestamp` and `frame` values.
+The hierarchy is **flattened**: each row is one joint. A single frame produces ~91 rows (~90 joints + 1 camera), all sharing the same `timestamp` and `frame` values.
 
-#### 2. Video-extracted pose (`generateCSV` / `processVideo`)
+**Camera row** — `joint=camera` contains the device's ARKit camera transform, useful for reconstructing the world coordinate frame or computing relative positions.
 
-Produced by running Vision body-pose detection over a pre-recorded video file.
+## UDP Protocol
+
+Each frame is a fixed-size binary packet sent over UDP to the configured host:port.
+
+### Frame Layout (2561 bytes total)
 
 ```
-timestamp,frame,joint,pos_x,pos_y,pos_z
+Offset  Size  Type      Field
+──────  ────  ────────  ────────────
+0       1     UInt8     type = 1
+1       8     Float64   timestamp (seconds)
+9       4     UInt32    frameIndex
+13      2520  Float32[] joints[90] — 7 floats each (pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w)
+2533    28    Float32[] camera       — 7 floats (same layout)
+──────  ────
+Total:  2561 bytes
 ```
 
-| Column | Type | Description |
-|---|---|---|
-| `timestamp` | float (4 dp) | Video presentation timestamp in seconds |
-| `frame` | int | Zero-based frame index |
-| `joint` | string | Vision human body pose joint name (e.g. `right_wrist`, `left_elbow`) — see [VNHumanBodyPoseObservation.JointName](https://developer.apple.com/documentation/vision/vnhumanbodyposeobservation/jointname) |
-| `pos_x`, `pos_y`, `pos_z` | float | 2D **image-space** position (pixels). `pos_z` is always 0 — Vision provides only (x, y) screen coordinates |
+All multi-byte values are **little-endian**. IP fragmentation splits this into 2 packets; the kernel reassembles automatically.
 
-No rotation data is available from video extraction because Vision's 2D pose detector does not produce 3D orientation. Only joints with confidence > 0.3 are included, so the number of joints per frame varies.
+### Joint Order
 
-### Why CSV instead of JSON?
+The 90 joints follow `ARSkeletonDefinition.jointNames` order and are always consistent. The mapping (e.g. `joint[0] = root`, `joint[1] = hips_joint`) can be obtained from any ARKit skeleton definition.
 
-CSV is the default because it is compact and works directly with ML/analysis tools (pandas, NumPy, Excel). However, CSV **flattens** the frame → joints hierarchy: the timestamp and frame index are repeated on every row, which is redundant.
+### Python Receiver Example
 
-JSON would naturally model the hierarchy:
+```python
+import socket, struct
 
-```json
-{
-  "frames": [
-    {
-      "timestamp": 0.0000,
-      "index": 0,
-      "joints": [
-        { "name": "root", "pos": [0, 0, 0], "rot": [0, 0, 0, 1] },
-        { "name": "left_hand_joint", "pos": [0.1, 0.5, -0.2], "rot": [0, 0, 0, 1] }
-      ]
-    }
-  ]
-}
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(("0.0.0.0", 9999))
+
+JOINT_COUNT = 90
+
+while True:
+    data, addr = sock.recvfrom(4096)
+    type_byte = data[0]
+    ts, idx = struct.unpack('<dI', data[1:13])
+
+    joints = []
+    for i in range(JOINT_COUNT):
+        offset = 13 + i * 28
+        vals = struct.unpack('<7f', data[offset:offset+28])
+        joints.append(vals)
+
+    cam = struct.unpack('<7f', data[-28:])
+    print(f"frame {idx}  ts={ts:.4f}  joints={len(joints)}  cam_pos=({cam[0]:.2f},{cam[1]:.2f},{cam[2]:.2f})")
 ```
-
-**Trade-offs:**
-
-| | CSV | JSON |
-|---|---|---|
-| File size | Smaller (no repeated key names) | Larger (~2–3× for the same data) |
-| Hierarchy | Flat — must group by `frame` column | Natural — `frames[].joints[]` |
-| ML / pandas | `pd.read_csv()` works directly | Needs `json_normalize` or custom parsing |
-| Web / JS | Needs CSV parser | `JSON.parse()` natively |
-| Metadata | None (just column headers) | Can embed recording config, skeleton definition, etc. |
-
-If JSON export would be useful for your pipeline, it's a straightforward addition — the `JointFrame` struct already holds the hierarchy, so serializing it with `Codable` is minimal work.
 
 ## Project Structure
 
@@ -135,19 +158,21 @@ collection_app/
 ├── AppDelegate.swift              # UIKit app entry point
 ├── ViewController.swift           # ARKit session, body tracking, UI overlay
 ├── Recording/
-│   └── RecordingManager.swift     # Skeleton buffering, CSV export, video recording
+│   ├── RecordingManager.swift     # Skeleton buffering, CSV export, video recording, UDP config
+│   └── UDPSender.swift            # NWConnection UDP sender, binary frame builder
 ├── Settings/
-│   └── SettingsViewController.swift  # Settings UI
+│   └── SettingsViewController.swift  # Settings UI, UDP config, file browser
 ├── character/
 │   └── robot.usdz                 # 3D robot model (BodyTrackedEntity)
 ├── Assets.xcassets/               # App icons
 ├── Base.lproj/                    # Storyboard, launch screen
-└── Info.plist                     # App configuration
+├── Info.plist                     # App configuration
+└── project.yml                    # XcodeGen project spec
 ```
 
 ## Build System
 
-The Xcode project is generated from `project.yml` via [XcodeGen](https://github.com/yonaskolb/XcodeGen). The `build.sh` script handles generation and compilation — no need to open Xcode.
+The Xcode project is generated from `project.yml` via [XcodeGen](https://github.com/yonaskolb/XcodeGen). The `install.sh` script handles generation, compilation, and device installation — no need to open Xcode.
 
 ## License
 

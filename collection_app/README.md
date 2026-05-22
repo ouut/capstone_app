@@ -144,6 +144,20 @@ If nothing appears:
 2. **Check Mac IP**: `ifconfig en0 | grep "inet "`
 3. **Confirm firewall**: System Settings → Network → Firewall → off or allow `nc`
 
+### Testing with iPhone Hotspot
+
+On campus/enterprise networks with client isolation, use the iPhone as a hotspot:
+
+1. **iPhone**: Settings → Personal Hotspot → On
+2. **Mac**: Connect to the iPhone's Wi-Fi network
+3. **Find Mac IP**: `ifconfig en0 | grep "inet "` (typically `172.20.10.2`)
+4. **In collection_app Settings**:
+   - IP / Hostname: `172.20.10.2` (your Mac's IP on the hotspot network)
+   - Port: `9999`
+   - Send via UDP: On
+5. **On Mac**: `nc -ul 9999 | xxd | head -10`
+6. **Start recording** — you should see binary data streaming
+
 ### Python Receiver Example
 
 ```python

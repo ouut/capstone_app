@@ -92,7 +92,7 @@ timestamp,frame,joint,pos_x,pos_y,pos_z,rot_x,rot_y,rot_z,rot_w
 
 | Column | Type | Description |
 |---|---|---|
-| `timestamp` | float (4 dp) | Seconds elapsed since recording started |
+| `timestamp` | float (4 dp) | Unix epoch time (seconds since 1970-01-01) |
 | `frame` | int | Zero-based frame index |
 | `joint` | string | ARKit skeleton joint name (e.g. `root`, `left_hand_joint`) — see [ARSkeleton.JointName](https://developer.apple.com/documentation/arkit/arskeleton/jointname) for the full list of ~90 joints. Special value `camera` for the device pose |
 | `pos_x`, `pos_y`, `pos_z` | float | World-space **position** (meters). Translation from column 3 of the 4×4 transform matrix |
@@ -112,7 +112,7 @@ Each frame is a fixed-size binary packet sent over UDP to the configured host:po
 Offset  Size  Type      Field
 ──────  ────  ────────  ────────────
 0       1     UInt8     type = 1
-1       8     Float64   timestamp (seconds)
+1       8     Float64   timestamp (Unix epoch, seconds since 1970-01-01)
 9       4     UInt32    frameIndex
 13      2520  Float32[] joints[90] — 7 floats each (pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w)
 2533    28    Float32[] camera       — 7 floats (same layout)
@@ -158,6 +158,8 @@ JOINT_COUNT = 90
 while True:
     data, addr = sock.recvfrom(4096)
     ts, idx = struct.unpack('<dI', data[1:13])
+    now = time.time()
+    latency = now - ts
 
     joints = []
     for i in range(JOINT_COUNT):
@@ -166,7 +168,7 @@ while True:
         joints.append(vals)
 
     cam = struct.unpack('<7f', data[-28:])
-    print(f"frame {idx}  ts={ts:.4f}  joints={len(joints)}  cam_pos=({cam[0]:.2f},{cam[1]:.2f},{cam[2]:.2f})")
+    print(f"frame {idx}  latency={latency*1000:.0f}ms  joints={len(joints)}  cam_pos=({cam[0]:.2f},{cam[1]:.2f},{cam[2]:.2f})")
 ```
 
 ## Project Structure

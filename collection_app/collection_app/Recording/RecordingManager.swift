@@ -85,9 +85,11 @@ final class RecordingManager: NSObject, ObservableObject {
         let now = CACurrentMediaTime()
         if startTime == 0 || index == 0 { startTime = now }
 
-        let t = now - startTime
-        elapsed = t
+        let relativeTime = now - startTime
+        elapsed = relativeTime
         frameCount = index + 1
+
+        let t = Date().timeIntervalSince1970
 
         // Joint data
         let skeleton = bodyAnchor.skeleton
@@ -99,7 +101,7 @@ final class RecordingManager: NSObject, ObservableObject {
 
         // Video
         if videoEnabled, let pb = cameraPixelBuffer {
-            writeVideoFrame(pb, at: t)
+            writeVideoFrame(pb, at: relativeTime)
         }
 
         // UDP

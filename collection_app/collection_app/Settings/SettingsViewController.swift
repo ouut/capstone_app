@@ -188,6 +188,23 @@ final class SettingsViewController: UIViewController {
 extension SettingsViewController: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
         guard let url = urls.first else { return }
+        let name = url.lastPathComponent
+        let alert = UIAlertController(title: name, message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "Share\u{2026}", style: .default) { [weak self] _ in
+            self?.shareFile(at: url)
+        })
+        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+            self?.recordingManager?.deleteRecordedFile(at: url)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        if let pop = alert.popoverPresentationController {
+            pop.sourceView = view
+            pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+        }
+        present(alert, animated: true)
+    }
+
+    private func shareFile(at url: URL) {
         let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
             pop.sourceView = view

@@ -133,8 +133,6 @@ final class SettingsViewController: UIViewController {
         hostError.font = .systemFont(ofSize: 11)
         hostError.textColor = .systemRed
         hostError.isHidden = true
-        hostError.layoutMargins = UIEdgeInsets(top: 2, left: 0, bottom: 6, right: 0)
-        hostError.isLayoutMarginsRelativeArrangement = true
         card2Stack.addArrangedSubview(hostError)
 
         card2Stack.addArrangedSubview(divider())
@@ -154,8 +152,6 @@ final class SettingsViewController: UIViewController {
         portError.font = .systemFont(ofSize: 11)
         portError.textColor = .systemRed
         portError.isHidden = true
-        portError.layoutMargins = UIEdgeInsets(top: 2, left: 0, bottom: 6, right: 0)
-        portError.isLayoutMarginsRelativeArrangement = true
         card2Stack.addArrangedSubview(portError)
 
         card2Stack.addArrangedSubview(divider())

@@ -36,6 +36,8 @@ final class RecordingManager: NSObject, ObservableObject {
     private var writerReady = false
     private let videoQueue = DispatchQueue(label: "recording.video", qos: .userInitiated)
 
+    let udpSender = UDPSender()
+
     var onStatusChange: ((String) -> Void)?
 
     // MARK: - Recording control
@@ -98,6 +100,17 @@ final class RecordingManager: NSObject, ObservableObject {
         // Video
         if videoEnabled, let pb = cameraPixelBuffer {
             writeVideoFrame(pb, at: t)
+        }
+
+        // UDP
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "udp_enabled") {
+            let host = defaults.string(forKey: "udp_host") ?? ""
+            let portStr = defaults.string(forKey: "udp_port") ?? ""
+            let port = UInt16(portStr) ?? 0
+            udpSender.configure(host: host, port: port)
+            udpSender.send(timestamp: t, frameIndex: UInt32(index),
+                           joints: joints, cameraTransform: cameraTransform)
         }
 
         index += 1

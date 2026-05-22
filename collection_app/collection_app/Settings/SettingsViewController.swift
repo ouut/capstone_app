@@ -5,12 +5,20 @@ final class SettingsViewController: UIViewController {
 
     private let dataIDField = UITextField()
     private let saveVideoToggle = UISwitch()
+    private let hostField = UITextField()
+    private let portField = UITextField()
+    private let udpToggle = UISwitch()
+    private let hostError = UILabel()
+    private let portError = UILabel()
 
     var recordingManager: RecordingManager?
 
     private let defaults = UserDefaults.standard
     private let kDataID = "recording_data_id"
     private let kSaveVideo = "recording_save_video"
+    private let kHost = "udp_host"
+    private let kPort = "udp_port"
+    private let kUDP = "udp_enabled"
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -98,6 +106,89 @@ final class SettingsViewController: UIViewController {
         ])
         stack.addArrangedSubview(card1)
 
+        // ── Section: UDP Streaming ──
+        stack.addArrangedSubview(sectionHeader("UDP STREAMING"))
+
+        let card2 = cardView()
+        let card2Stack = UIStackView()
+        card2Stack.axis = .vertical
+        card2Stack.spacing = 0
+        card2Stack.translatesAutoresizingMaskIntoConstraints = false
+        card2.addSubview(card2Stack)
+
+        // Host row
+        hostField.borderStyle = .none
+        hostField.font = .systemFont(ofSize: 16)
+        hostField.textAlignment = .right
+        hostField.textColor = .secondaryLabel
+        hostField.placeholder = "192.168.1.100"
+        hostField.keyboardType = .URL
+        hostField.autocapitalizationType = .none
+        hostField.autocorrectionType = .no
+        hostField.addTarget(self, action: #selector(hostChanged), for: .editingChanged)
+        hostField.addTarget(self, action: #selector(hostEditingDidEnd), for: .editingDidEnd)
+        card2Stack.addArrangedSubview(labeledRow("IP / Hostname", hostField))
+
+        // Host error
+        hostError.font = .systemFont(ofSize: 11)
+        hostError.textColor = .systemRed
+        hostError.isHidden = true
+        hostError.layoutMargins = UIEdgeInsets(top: 2, left: 0, bottom: 6, right: 0)
+        hostError.isLayoutMarginsRelativeArrangement = true
+        card2Stack.addArrangedSubview(hostError)
+
+        card2Stack.addArrangedSubview(divider())
+
+        // Port row
+        portField.borderStyle = .none
+        portField.font = .systemFont(ofSize: 16)
+        portField.textAlignment = .right
+        portField.textColor = .secondaryLabel
+        portField.placeholder = "9999"
+        portField.keyboardType = .numberPad
+        portField.addTarget(self, action: #selector(portChanged), for: .editingChanged)
+        portField.addTarget(self, action: #selector(portEditingDidEnd), for: .editingDidEnd)
+        card2Stack.addArrangedSubview(labeledRow("Port", portField))
+
+        // Port error
+        portError.font = .systemFont(ofSize: 11)
+        portError.textColor = .systemRed
+        portError.isHidden = true
+        portError.layoutMargins = UIEdgeInsets(top: 2, left: 0, bottom: 6, right: 0)
+        portError.isLayoutMarginsRelativeArrangement = true
+        card2Stack.addArrangedSubview(portError)
+
+        card2Stack.addArrangedSubview(divider())
+
+        // UDP toggle row
+        let udpRow = UIStackView()
+        udpRow.axis = .horizontal
+        udpRow.spacing = 8
+        udpRow.alignment = .center
+        udpRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        udpRow.isLayoutMarginsRelativeArrangement = true
+        let udpLabel = UILabel()
+        udpLabel.text = "Send via UDP"
+        udpLabel.font = .systemFont(ofSize: 16)
+        udpRow.addArrangedSubview(udpLabel)
+        let udpHint = UILabel()
+        udpHint.text = "(default: off)"
+        udpHint.font = .systemFont(ofSize: 13)
+        udpHint.textColor = .tertiaryLabel
+        udpRow.addArrangedSubview(udpHint)
+        udpRow.addArrangedSubview(UIView())
+        udpToggle.addTarget(self, action: #selector(udpToggled), for: .valueChanged)
+        udpRow.addArrangedSubview(udpToggle)
+        card2Stack.addArrangedSubview(udpRow)
+
+        NSLayoutConstraint.activate([
+            card2Stack.topAnchor.constraint(equalTo: card2.topAnchor, constant: 4),
+            card2Stack.bottomAnchor.constraint(equalTo: card2.bottomAnchor, constant: -4),
+            card2Stack.leadingAnchor.constraint(equalTo: card2.leadingAnchor, constant: 16),
+            card2Stack.trailingAnchor.constraint(equalTo: card2.trailingAnchor, constant: -16)
+        ])
+        stack.addArrangedSubview(card2)
+
         // ── Section: Browse Files ──
         stack.addArrangedSubview(sectionHeader("RECORDED FILES"))
 
@@ -128,6 +219,22 @@ final class SettingsViewController: UIViewController {
     }
 
     // MARK: - Helpers
+
+    private func labeledRow(_ label: String, _ field: UITextField) -> UIStackView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 12
+        row.alignment = .center
+        row.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        row.isLayoutMarginsRelativeArrangement = true
+        let l = UILabel()
+        l.text = label
+        l.font = .systemFont(ofSize: 16)
+        l.setContentHuggingPriority(.required, for: .horizontal)
+        row.addArrangedSubview(l)
+        row.addArrangedSubview(field)
+        return row
+    }
 
     private func sectionHeader(_ text: String) -> UILabel {
         let l = UILabel()
@@ -163,6 +270,14 @@ final class SettingsViewController: UIViewController {
         let defaultID = dateFormatter.string(from: now)
         dataIDField.text = defaults.string(forKey: kDataID) ?? defaultID
         saveVideoToggle.isOn = defaults.bool(forKey: kSaveVideo)
+        hostField.text = defaults.string(forKey: kHost) ?? ""
+        portField.text = defaults.string(forKey: kPort) ?? ""
+        udpToggle.isOn = defaults.bool(forKey: kUDP)
+        // If host/port are invalid and UDP was on, force off
+        if udpToggle.isOn && !validateHostPort(silent: true) {
+            udpToggle.isOn = false
+            defaults.set(false, forKey: kUDP)
+        }
     }
 
     @objc private func dataIDChanged() {
@@ -171,6 +286,86 @@ final class SettingsViewController: UIViewController {
 
     @objc private func saveVideoToggled() {
         defaults.set(saveVideoToggle.isOn, forKey: kSaveVideo)
+    }
+
+    // MARK: - UDP settings
+
+    @objc private func hostChanged() {
+        let text = hostField.text ?? ""
+        defaults.set(text, forKey: kHost)
+        // Only clear error, don't validate while typing
+        hostError.isHidden = true
+    }
+
+    @objc private func hostEditingDidEnd() {
+        validateHostPort(silent: false)
+    }
+
+    @objc private func portChanged() {
+        let text = portField.text ?? ""
+        defaults.set(text, forKey: kPort)
+        portError.isHidden = true
+    }
+
+    @objc private func portEditingDidEnd() {
+        validateHostPort(silent: false)
+    }
+
+    @objc private func udpToggled() {
+        if udpToggle.isOn {
+            if validateHostPort(silent: false) {
+                defaults.set(true, forKey: kUDP)
+                recordingManager?.udpSender.start()
+            } else {
+                udpToggle.isOn = false
+                defaults.set(false, forKey: kUDP)
+            }
+        } else {
+            defaults.set(false, forKey: kUDP)
+            recordingManager?.udpSender.stop()
+        }
+    }
+
+    @discardableResult
+    private func validateHostPort(silent: Bool) -> Bool {
+        let host = hostField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        let port = portField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+
+        let hostValid = isValidHost(host)
+        let portValid = isValidPort(port)
+
+        if !silent {
+            hostError.text = host.isEmpty ? "Required" : (hostValid ? nil : "Invalid IP or hostname")
+            hostError.isHidden = hostValid
+            portError.text = port.isEmpty ? "Required" : (portValid ? nil : "Port must be 1024\u{2013}65535")
+            portError.isHidden = portValid
+        }
+
+        return hostValid && portValid
+    }
+
+    private func isValidHost(_ host: String) -> Bool {
+        if host.isEmpty { return false }
+        // IPv4: 1.2.3.4
+        let ipv4Pattern = #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#
+        if host.range(of: ipv4Pattern, options: .regularExpression) != nil {
+            let parts = host.split(separator: ".")
+            return parts.allSatisfy { p in
+                guard let n = Int(p), n >= 0, n <= 255 else { return false }
+                return String(n) == String(p)  // reject "01" style
+            }
+        }
+        // Hostname: a-z, 0-9, hyphen, dots, at least one dot
+        let hostPattern = #"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$"#
+        if host.range(of: hostPattern, options: .regularExpression) != nil {
+            return true
+        }
+        return false
+    }
+
+    private func isValidPort(_ port: String) -> Bool {
+        guard let n = Int(port), n >= 1024, n <= 65535 else { return false }
+        return true
     }
 
     var dataID: String { dataIDField.text ?? dateFormatter.string(from: Date()) }

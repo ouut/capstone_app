@@ -25,7 +25,7 @@ class ViewController: UIViewController, ARSessionDelegate {
     private let recLabel = UILabel()
     private let settingsButton = UIButton(type: .system)
     private let statusLabel = UILabel()
-    private var latestCameraFrame: CVPixelBuffer?
+    private var latestCameraFrame: ARFrame?
 
     private let defaults = UserDefaults.standard
     private var cancellables = Set<AnyCancellable>()
@@ -82,14 +82,17 @@ class ViewController: UIViewController, ARSessionDelegate {
             }
 
             // Feed recording manager
+            let camTransform = latestCameraFrame?.camera.transform ?? matrix_identity_float4x4
+            let camPixelBuffer = latestCameraFrame?.capturedImage
             recordingManager.recordFrame(bodyAnchor: bodyAnchor,
-                                         cameraPixelBuffer: latestCameraFrame)
+                                         cameraTransform: camTransform,
+                                         cameraPixelBuffer: camPixelBuffer)
         }
     }
 
-    // Capture camera frames for optional video recording
+    // Capture camera frames for optional video recording and camera pose
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        latestCameraFrame = frame.capturedImage
+        latestCameraFrame = frame
     }
 
     // MARK: - Overlay UI

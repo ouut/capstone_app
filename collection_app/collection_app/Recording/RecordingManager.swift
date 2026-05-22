@@ -1,12 +1,20 @@
 import ARKit
 import AVFoundation
-import Vision
 import Combine
 
 struct JointFrame {
     let timestamp: TimeInterval
     let frameIndex: Int
     let joints: [(name: String, transform: simd_float4x4)]
+    let cameraTransform: simd_float4x4
+}
+
+struct RecordedFile {
+    let url: URL
+    let name: String
+    let size: Int64
+    let date: Date
+    let isCSV: Bool
 }
 
 final class RecordingManager: NSObject, ObservableObject {
@@ -69,7 +77,7 @@ final class RecordingManager: NSObject, ObservableObject {
         onStatusChange?("Saved \(frameCount) frames")
     }
 
-    func recordFrame(bodyAnchor: ARBodyAnchor, cameraPixelBuffer: CVPixelBuffer?) {
+    func recordFrame(bodyAnchor: ARBodyAnchor, cameraTransform: simd_float4x4, cameraPixelBuffer: CVPixelBuffer?) {
         guard isRecording else { return }
 
         let now = CACurrentMediaTime()
@@ -85,7 +93,7 @@ final class RecordingManager: NSObject, ObservableObject {
         let xforms = skeleton.jointModelTransforms
         var joints: [(name: String, transform: simd_float4x4)] = []
         for i in 0..<names.count { joints.append((names[i], xforms[i])) }
-        frames.append(JointFrame(timestamp: t, frameIndex: index, joints: joints))
+        frames.append(JointFrame(timestamp: t, frameIndex: index, joints: joints, cameraTransform: cameraTransform))
 
         // Video
         if videoEnabled, let pb = cameraPixelBuffer {
@@ -241,83 +249,50 @@ final class RecordingManager: NSObject, ObservableObject {
                 let rx = rot.vector.x, ry = rot.vector.y, rz = rot.vector.z, rw = rot.vector.w
                 csv += "\(t),\(idx),\(joint.name),\(px),\(py),\(pz),\(rx),\(ry),\(rz),\(rw)\n"
             }
+            // Camera row
+            let ct = String(format: "%.4f", frame.timestamp)
+            let ci = frame.frameIndex
+            let camCols = frame.cameraTransform.columns
+            let cpx = camCols.3.x, cpy = camCols.3.y, cpz = camCols.3.z
+            let camRot = simd_quatf(frame.cameraTransform)
+            let crx = camRot.vector.x, cry = camRot.vector.y, crz = camRot.vector.z, crw = camRot.vector.w
+            csv += "\(ct),\(ci),camera,\(cpx),\(cpy),\(cpz),\(crx),\(cry),\(crz),\(crw)\n"
         }
         try? csv.write(to: csvURL, atomically: true, encoding: .utf8)
         onStatusChange?("CSV: \(csvURL.lastPathComponent)")
     }
 
-    // MARK: - Video → CSV
+    // MARK: - File listing
 
-    func generateCSV(from videoURL: URL, dataID: String) {
-        onStatusChange?("Processing video...")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.processVideo(url: videoURL, dataID: dataID)
-        }
-    }
-
-    private func processVideo(url: URL, dataID: String) {
-        let asset = AVURLAsset(url: url)
-        guard let reader = try? AVAssetReader(asset: asset),
-              let videoTrack = asset.tracks(withMediaType: .video).first else {
-            DispatchQueue.main.async { self.onStatusChange?("Failed to read video") }
-            return
-        }
-
-        let output: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-        ]
-        let readerOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: output)
-        reader.add(readerOutput)
-        reader.startReading()
-
-        let request = VNDetectHumanBodyPoseRequest()
-        let handler = VNSequenceRequestHandler()
-        var allFrames: [JointFrame] = []
-        var idx = 0
-
-        while let sampleBuffer = readerOutput.copyNextSampleBuffer() {
-            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { continue }
-            let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
-            do { try handler.perform([request], on: pixelBuffer, orientation: .up) }
-            catch { continue }
-
-            guard let obs = request.results?.first,
-                  let points = try? obs.recognizedPoints(.all) else { continue }
-
-            var joints: [(name: String, transform: simd_float4x4)] = []
-            for (name, pt) in points where pt.confidence > 0.3 {
-                let x = Float(pt.location.x)
-                let y = Float(pt.location.y)
-                var t = matrix_identity_float4x4
-                t.columns.3 = SIMD4<Float>(x, y, 0, 1)
-                joints.append((name.rawValue.rawValue, t))
-            }
-            if !joints.isEmpty {
-                allFrames.append(JointFrame(timestamp: timestamp, frameIndex: idx, joints: joints))
-                idx += 1
-            }
-        }
-        reader.cancelReading()
-
+    func listRecordedFiles() -> [RecordedFile] {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("BodyMotionRecordings", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let dateStr = dateFormatter.string(from: Date())
-        let csvURL = dir.appendingPathComponent("\(dataID)_fromVideo_\(dateStr).csv")
-
-        var csv = "timestamp,frame,joint,pos_x,pos_y,pos_z\n"
-        for frame in allFrames {
-            for joint in frame.joints {
-                let t = String(format: "%.4f", frame.timestamp)
-                let cols = joint.transform.columns
-                csv += "\(t),\(frame.frameIndex),\(joint.name),\(cols.3.x),\(cols.3.y),\(cols.3.z)\n"
-            }
+        guard let contents = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]) else {
+            return []
         }
-        try? csv.write(to: csvURL, atomically: true, encoding: .utf8)
-        DispatchQueue.main.async {
-            self.onStatusChange?("CSV: \(csvURL.lastPathComponent)")
+        var files: [RecordedFile] = []
+        for url in contents {
+            let ext = url.pathExtension.lowercased()
+            guard ext == "csv" || ext == "mp4" else { continue }
+            let attrs = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
+            let size = (attrs[.size] as? Int64) ?? 0
+            let date = (attrs[.modificationDate] as? Date) ?? Date.distantPast
+            files.append(RecordedFile(
+                url: url,
+                name: url.lastPathComponent,
+                size: size,
+                date: date,
+                isCSV: ext == "csv"
+            ))
         }
+        files.sort { $0.date > $1.date }
+        return files
     }
+
+    func deleteRecordedFile(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
+
 }
 
 private let dateFormatter: DateFormatter = {

@@ -121,7 +121,7 @@ final class SettingsViewController: UIViewController {
         hostField.font = .systemFont(ofSize: 16)
         hostField.textAlignment = .right
         hostField.textColor = .secondaryLabel
-        hostField.placeholder = "192.168.1.100"
+        hostField.placeholder = "100.99.98.5"
         hostField.keyboardType = .URL
         hostField.autocapitalizationType = .none
         hostField.autocorrectionType = .no

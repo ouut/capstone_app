@@ -126,6 +126,24 @@ All multi-byte values are **little-endian**. IP fragmentation splits this into 2
 
 The 90 joints follow `ARSkeletonDefinition.jointNames` order and are always consistent. The mapping (e.g. `joint[0] = root`, `joint[1] = hips_joint`) can be obtained from any ARKit skeleton definition.
 
+### Quick Verification
+
+On the receiving Mac, first confirm data is arriving:
+
+```bash
+# Check raw bytes
+nc -ul 9999 | xxd | head -10
+
+# Check frame headers (type, timestamp, frameIndex)
+nc -ul 9999 | od -A x -t x1 -t f4 | head -20
+```
+
+If nothing appears:
+
+1. **Ensure both devices are on the same network** — use iPhone hotspot for Mac if on a campus/enterprise network with client isolation
+2. **Check Mac IP**: `ifconfig en0 | grep "inet "`
+3. **Confirm firewall**: System Settings → Network → Firewall → off or allow `nc`
+
 ### Python Receiver Example
 
 ```python
@@ -133,12 +151,12 @@ import socket, struct
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind(("0.0.0.0", 9999))
+print("listening on :9999...")
 
 JOINT_COUNT = 90
 
 while True:
     data, addr = sock.recvfrom(4096)
-    type_byte = data[0]
     ts, idx = struct.unpack('<dI', data[1:13])
 
     joints = []

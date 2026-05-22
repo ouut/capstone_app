@@ -1,12 +1,10 @@
 import UIKit
+import UniformTypeIdentifiers
 
 final class SettingsViewController: UIViewController {
 
     private let dataIDField = UITextField()
     private let saveVideoToggle = UISwitch()
-    private let fileListCard = UIView()
-    private let fileListStack = UIStackView()
-    private let fileListEmpty = UILabel()
 
     var recordingManager: RecordingManager?
 
@@ -20,11 +18,6 @@ final class SettingsViewController: UIViewController {
         title = "Settings"
         setupUI()
         loadSettings()
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        refreshFileList()
     }
 
     private func setupUI() {
@@ -105,37 +98,19 @@ final class SettingsViewController: UIViewController {
         ])
         stack.addArrangedSubview(card1)
 
-        // ── Section: Recorded Files ──
+        // ── Section: Browse Files ──
         stack.addArrangedSubview(sectionHeader("RECORDED FILES"))
 
-        fileListCard.backgroundColor = .systemBackground
-        fileListCard.layer.cornerRadius = 12
-        fileListCard.layer.cornerCurve = .continuous
-        fileListCard.layer.shadowColor = UIColor.black.cgColor
-        fileListCard.layer.shadowOpacity = 0.06
-        fileListCard.layer.shadowRadius = 8
-        fileListCard.layer.shadowOffset = CGSize(width: 0, height: 2)
-        fileListCard.isHidden = true
-        stack.addArrangedSubview(fileListCard)
-
-        fileListStack.axis = .vertical
-        fileListStack.spacing = 0
-        fileListStack.translatesAutoresizingMaskIntoConstraints = false
-        fileListCard.addSubview(fileListStack)
-
-        fileListEmpty.text = "No recordings yet"
-        fileListEmpty.font = .systemFont(ofSize: 14)
-        fileListEmpty.textColor = .secondaryLabel
-        fileListEmpty.textAlignment = .center
-        fileListEmpty.isHidden = true
-        stack.addArrangedSubview(fileListEmpty)
-
-        NSLayoutConstraint.activate([
-            fileListStack.topAnchor.constraint(equalTo: fileListCard.topAnchor, constant: 8),
-            fileListStack.bottomAnchor.constraint(equalTo: fileListCard.bottomAnchor, constant: -8),
-            fileListStack.leadingAnchor.constraint(equalTo: fileListCard.leadingAnchor, constant: 16),
-            fileListStack.trailingAnchor.constraint(equalTo: fileListCard.trailingAnchor, constant: -16)
-        ])
+        let browseBtn = UIButton(type: .system)
+        browseBtn.setTitle("Browse Recordings\u{2026}", for: .normal)
+        browseBtn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        browseBtn.backgroundColor = .systemBlue
+        browseBtn.setTitleColor(.white, for: .normal)
+        browseBtn.layer.cornerRadius = 10
+        browseBtn.layer.cornerCurve = .continuous
+        browseBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        browseBtn.addTarget(self, action: #selector(browseFiles), for: .touchUpInside)
+        stack.addArrangedSubview(browseBtn)
 
         // Layout
         NSLayoutConstraint.activate([
@@ -201,127 +176,30 @@ final class SettingsViewController: UIViewController {
     var dataID: String { dataIDField.text ?? dateFormatter.string(from: Date()) }
     var saveVideo: Bool { saveVideoToggle.isOn }
 
-    // MARK: - File list
+    // MARK: - Browse files
 
-    private func refreshFileList() {
-        guard let files = recordingManager?.listRecordedFiles() else { return }
-        fileListStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-
-        if files.isEmpty {
-            fileListCard.isHidden = true
-            fileListEmpty.isHidden = false
-            return
-        }
-
-        fileListCard.isHidden = false
-        fileListEmpty.isHidden = true
-
-        for (i, file) in files.enumerated() {
-            let row = makeFileRow(file)
-            fileListStack.addArrangedSubview(row)
-            if i < files.count - 1 {
-                fileListStack.addArrangedSubview(divider())
-            }
-        }
+    @objc private func browseFiles() {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.commaSeparatedText, .mpeg4Movie])
+        picker.delegate = self
+        present(picker, animated: true)
     }
+}
 
-    private func makeFileRow(_ file: RecordedFile) -> UIView {
-        let row = UIStackView()
-        row.axis = .horizontal
-        row.spacing = 10
-        row.alignment = .center
-        row.layoutMargins = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
-        row.isLayoutMarginsRelativeArrangement = true
-
-        let icon = UIImageView(image: UIImage(systemName: file.isCSV ? "tablecells" : "film"))
-        icon.tintColor = file.isCSV ? .systemGreen : .systemBlue
-        icon.contentMode = .scaleAspectFit
-        icon.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        row.addArrangedSubview(icon)
-
-        let labelStack = UIStackView()
-        labelStack.axis = .vertical
-        labelStack.spacing = 2
-        let nameLabel = UILabel()
-        nameLabel.text = file.name
-        nameLabel.font = .systemFont(ofSize: 14, weight: .medium)
-        nameLabel.lineBreakMode = .byTruncatingMiddle
-        let infoLabel = UILabel()
-        let sizeStr = ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file)
-        infoLabel.text = "\(dateDisplayFormatter.string(from: file.date))  \(sizeStr)"
-        infoLabel.font = .systemFont(ofSize: 12)
-        infoLabel.textColor = .secondaryLabel
-        labelStack.addArrangedSubview(nameLabel)
-        labelStack.addArrangedSubview(infoLabel)
-        row.addArrangedSubview(labelStack)
-
-        row.addArrangedSubview(UIView())
-
-        let shareBtn = UIButton(type: .system)
-        shareBtn.setImage(UIImage(systemName: "square.and.arrow.up"), for: .normal)
-        shareBtn.widthAnchor.constraint(equalToConstant: 32).isActive = true
-        shareBtn.heightAnchor.constraint(equalToConstant: 32).isActive = true
-        shareBtn.addAction(UIAction { [weak self] _ in self?.shareFile(file) }, for: .touchUpInside)
-        row.addArrangedSubview(shareBtn)
-
-        // Context menu for delete
-        let interaction = UIContextMenuInteraction(delegate: self)
-        row.addInteraction(interaction)
-        row.accessibilityValue = file.url.path
-
-        return row
-    }
-
-    private func shareFile(_ file: RecordedFile) {
-        let vc = UIActivityViewController(activityItems: [file.url], applicationActivities: nil)
+extension SettingsViewController: UIDocumentPickerDelegate {
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first else { return }
+        let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
             pop.sourceView = view
             pop.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
         }
         present(vc, animated: true)
     }
-
-    private func confirmDelete(_ file: RecordedFile, sourceView: UIView) {
-        let alert = UIAlertController(title: "Delete \"\(file.name)\"?", message: nil, preferredStyle: .actionSheet)
-        alert.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
-            self?.recordingManager?.deleteRecordedFile(at: file.url)
-            self?.refreshFileList()
-        })
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        if let pop = alert.popoverPresentationController {
-            pop.sourceView = sourceView
-            pop.sourceRect = sourceView.bounds
-        }
-        present(alert, animated: true)
-    }
-}
-
-extension SettingsViewController: UIContextMenuInteractionDelegate {
-    func contextMenuInteraction(_ interaction: UIContextMenuInteraction, configurationForMenuAtLocation location: CGPoint) -> UIContextMenuConfiguration? {
-        guard let row = interaction.view,
-              let path = row.accessibilityValue,
-              let files = recordingManager?.listRecordedFiles(),
-              let file = files.first(where: { $0.url.path == path }) else { return nil }
-        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
-            let delete = UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
-                self?.recordingManager?.deleteRecordedFile(at: file.url)
-                self?.refreshFileList()
-            }
-            return UIMenu(children: [delete])
-        }
-    }
 }
 
 private let dateFormatter: DateFormatter = {
     let f = DateFormatter()
     f.dateFormat = "yyyy-MM-dd-HHmmss"
-    f.locale = Locale(identifier: "en_US_POSIX")
-    return f
-}()
-
-private let dateDisplayFormatter: DateFormatter = {
-    let f = DateFormatter()
-    f.dateFormat = "yyyy-MM-dd  HH:mm"
     f.locale = Locale(identifier: "en_US_POSIX")
     return f
 }()

@@ -223,7 +223,8 @@ final class RecordingManager: NSObject, ObservableObject {
         let dir = docs.appendingPathComponent("BodyMotionRecordings", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dateStr = dateFormatter.string(from: Date())
-        return dir.appendingPathComponent("\(dataID)_\(dateStr).mp4")
+        let name = dataID.isEmpty ? dateStr : "\(dateStr)_\(dataID)"
+        return dir.appendingPathComponent("\(name).mp4")
     }
 
     // MARK: - CSV export
@@ -236,7 +237,8 @@ final class RecordingManager: NSObject, ObservableObject {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let dateStr = dateFormatter.string(from: Date())
-        let csvURL = dir.appendingPathComponent("\(dataID)_\(dateStr).csv")
+        let name = dataID.isEmpty ? dateStr : "\(dateStr)_\(dataID)"
+        let csvURL = dir.appendingPathComponent("\(name).csv")
 
         var csv = "timestamp,frame,joint,pos_x,pos_y,pos_z,rot_x,rot_y,rot_z,rot_w\n"
         for frame in frames {

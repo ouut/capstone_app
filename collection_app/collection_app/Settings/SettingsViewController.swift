@@ -179,7 +179,8 @@ final class SettingsViewController: UIViewController {
     // MARK: - Browse files
 
     @objc private func browseFiles() {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.commaSeparatedText, .mpeg4Movie])
+        let csvType = UTType(filenameExtension: "csv") ?? .plainText
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [csvType, .mpeg4Movie])
         picker.delegate = self
         present(picker, animated: true)
     }

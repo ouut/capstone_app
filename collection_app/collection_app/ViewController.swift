@@ -215,7 +215,7 @@ class ViewController: UIViewController, ARSessionDelegate {
 
     @objc private func toggleRecording() {
         if recordingManager.isRecording {
-            let dataID = defaults.string(forKey: "recording_data_id") ?? "session"
+            let dataID = defaults.string(forKey: "recording_data_id") ?? ""
             let saveVideo = defaults.bool(forKey: "recording_save_video")
             recordingManager.stopRecording(dataID: dataID, saveVideo: saveVideo)
         } else {

@@ -26,6 +26,9 @@ final class RecordingManager: NSObject, ObservableObject {
     private var startTime: TimeInterval = 0
     private var index = 0
 
+    // CSV
+    private var csvEnabled = true
+
     // Video
     private var videoEnabled = false
     private var assetWriter: AVAssetWriter?
@@ -42,12 +45,13 @@ final class RecordingManager: NSObject, ObservableObject {
 
     // MARK: - Recording control
 
-    func startRecording(saveVideo: Bool) {
+    func startRecording(saveCSV: Bool, saveVideo: Bool) {
         frames.removeAll()
         index = 0
         frameCount = 0
         elapsed = 0
         isRecording = true
+        csvEnabled = saveCSV
         videoEnabled = saveVideo
         writerReady = false
         assetWriter = nil
@@ -55,10 +59,11 @@ final class RecordingManager: NSObject, ObservableObject {
         pixelBufferAdaptor = nil
         adaptorPool = nil
         videoOutputURL = nil
-        onStatusChange?(saveVideo ? "REC + Video" : "REC (CSV only)")
+        let parts = [saveCSV ? "CSV" : nil, saveVideo ? "Video" : nil].compactMap { $0 }
+        onStatusChange?("REC (\(parts.joined(separator: " + ")))")
     }
 
-    func stopRecording(dataID: String, saveVideo: Bool) {
+    func stopRecording(dataID: String, saveCSV: Bool, saveVideo: Bool) {
         isRecording = false
         onStatusChange?("Saving...")
 
@@ -66,7 +71,6 @@ final class RecordingManager: NSObject, ObservableObject {
             assetWriterInput?.markAsFinished()
             let url = videoOutputURL
             writer.finishWriting { [weak self] in
-                // Move temp video to final location
                 if let src = url, let dst = self?.finalVideoURL(dataID: dataID) {
                     try? FileManager.default.moveItem(at: src, to: dst)
                     self?.onStatusChange?("Video saved: \(dst.lastPathComponent)")
@@ -74,7 +78,7 @@ final class RecordingManager: NSObject, ObservableObject {
             }
         }
 
-        exportCSV(dataID: dataID)
+        if saveCSV { exportCSV(dataID: dataID) }
         frames.removeAll()
         onStatusChange?("Saved \(frameCount) frames")
     }
@@ -97,7 +101,9 @@ final class RecordingManager: NSObject, ObservableObject {
         let xforms = skeleton.jointModelTransforms
         var joints: [(name: String, transform: simd_float4x4)] = []
         for i in 0..<names.count { joints.append((names[i], xforms[i])) }
-        frames.append(JointFrame(timestamp: t, frameIndex: index, joints: joints, cameraTransform: cameraTransform))
+        if csvEnabled {
+            frames.append(JointFrame(timestamp: t, frameIndex: index, joints: joints, cameraTransform: cameraTransform))
+        }
 
         // Video
         if videoEnabled, let pb = cameraPixelBuffer {

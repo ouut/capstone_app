@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 final class SettingsViewController: UIViewController {
 
     private let dataIDField = UITextField()
+    private let saveCSVToggle = UISwitch()
     private let saveVideoToggle = UISwitch()
     private let hostField = UITextField()
     private let portField = UITextField()
@@ -15,6 +16,7 @@ final class SettingsViewController: UIViewController {
 
     private let defaults = UserDefaults.standard
     private let kDataID = "recording_data_id"
+    private let kSaveCSV = "recording_save_csv"
     private let kSaveVideo = "recording_save_video"
     private let kHost = "udp_host"
     private let kPort = "udp_port"
@@ -71,6 +73,13 @@ final class SettingsViewController: UIViewController {
         dataIDField.addTarget(self, action: #selector(dataIDChanged), for: .editingChanged)
         idRow.addArrangedSubview(dataIDField)
         card1Stack.addArrangedSubview(idRow)
+
+        card1Stack.addArrangedSubview(divider())
+
+        // Save CSV row
+        saveCSVToggle.isOn = true
+        saveCSVToggle.addTarget(self, action: #selector(saveCSVToggled), for: .valueChanged)
+        card1Stack.addArrangedSubview(toggleRow("Save CSV file", saveCSVToggle))
 
         card1Stack.addArrangedSubview(divider())
 
@@ -216,6 +225,27 @@ final class SettingsViewController: UIViewController {
 
     // MARK: - Helpers
 
+    private func toggleRow(_ label: String, _ toggle: UISwitch) -> UIStackView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 8
+        row.alignment = .center
+        row.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        row.isLayoutMarginsRelativeArrangement = true
+        let l = UILabel()
+        l.text = label
+        l.font = .systemFont(ofSize: 16)
+        row.addArrangedSubview(l)
+        let hint = UILabel()
+        hint.text = "(default: on)"
+        hint.font = .systemFont(ofSize: 13)
+        hint.textColor = .tertiaryLabel
+        row.addArrangedSubview(hint)
+        row.addArrangedSubview(UIView())
+        row.addArrangedSubview(toggle)
+        return row
+    }
+
     private func labeledRow(_ label: String, _ field: UITextField) -> UIStackView {
         let row = UIStackView()
         row.axis = .horizontal
@@ -265,6 +295,7 @@ final class SettingsViewController: UIViewController {
         let now = Date()
         let defaultID = dateFormatter.string(from: now)
         dataIDField.text = defaults.string(forKey: kDataID) ?? defaultID
+        saveCSVToggle.isOn = defaults.object(forKey: kSaveCSV) == nil ? true : defaults.bool(forKey: kSaveCSV)
         saveVideoToggle.isOn = defaults.bool(forKey: kSaveVideo)
         hostField.text = defaults.string(forKey: kHost) ?? ""
         portField.text = defaults.string(forKey: kPort) ?? ""
@@ -282,6 +313,10 @@ final class SettingsViewController: UIViewController {
 
     @objc private func saveVideoToggled() {
         defaults.set(saveVideoToggle.isOn, forKey: kSaveVideo)
+    }
+
+    @objc private func saveCSVToggled() {
+        defaults.set(saveCSVToggle.isOn, forKey: kSaveCSV)
     }
 
     // MARK: - UDP settings

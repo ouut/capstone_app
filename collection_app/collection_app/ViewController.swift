@@ -216,11 +216,13 @@ class ViewController: UIViewController, ARSessionDelegate {
     @objc private func toggleRecording() {
         if recordingManager.isRecording {
             let dataID = defaults.string(forKey: "recording_data_id") ?? ""
+            let saveCSV = defaults.object(forKey: "recording_save_csv") == nil ? true : defaults.bool(forKey: "recording_save_csv")
             let saveVideo = defaults.bool(forKey: "recording_save_video")
-            recordingManager.stopRecording(dataID: dataID, saveVideo: saveVideo)
+            recordingManager.stopRecording(dataID: dataID, saveCSV: saveCSV, saveVideo: saveVideo)
         } else {
+            let saveCSV = defaults.object(forKey: "recording_save_csv") == nil ? true : defaults.bool(forKey: "recording_save_csv")
             let saveVideo = defaults.bool(forKey: "recording_save_video")
-            recordingManager.startRecording(saveVideo: saveVideo)
+            recordingManager.startRecording(saveCSV: saveCSV, saveVideo: saveVideo)
         }
     }
 

@@ -133,7 +133,7 @@ class ViewController: UIViewController, ARSessionDelegate {
         statusLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         statusLabel.textColor = .white
         statusLabel.textAlignment = .center
-        statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        statusLabel.backgroundColor = .clear
         statusLabel.layer.cornerRadius = 8
         statusLabel.clipsToBounds = true
         statusLabel.numberOfLines = 3
@@ -191,6 +191,7 @@ class ViewController: UIViewController, ARSessionDelegate {
                 guard let self, self.recordingManager.isRecording else { return }
                 let min = Int(elapsed) / 60
                 let sec = Int(elapsed) % 60
+                self.statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
                 self.statusLabel.text = String(format: "  ● REC  %02d:%02d  |  %d frames  ", min, sec, count)
             }
             .store(in: &cancellables)
@@ -198,11 +199,13 @@ class ViewController: UIViewController, ARSessionDelegate {
         recordingManager.onStatusChange = { [weak self] msg in
             DispatchQueue.main.async {
                 guard let self else { return }
+                self.statusLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
                 self.statusLabel.text = "  \(msg)  "
                 self.recLabel.isHidden = !self.recordingManager.isRecording
                 if !self.recordingManager.isRecording {
                     self.statusLabel.textColor = .systemGreen
                     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        self.statusLabel.backgroundColor = .clear
                         self.statusLabel.text = ""
                         self.statusLabel.textColor = .white
                     }

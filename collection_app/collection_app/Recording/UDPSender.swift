@@ -28,10 +28,12 @@ final class UDPSender {
     }
 
     func send(timestamp: Double, frameIndex: UInt32,
+              subjectID: String, sessionNote: String,
               joints: [(name: String, transform: simd_float4x4)],
               cameraTransform: simd_float4x4) {
         guard let conn = connection else { return }
         let data = buildFrame(timestamp: timestamp, frameIndex: frameIndex,
+                              subjectID: subjectID, sessionNote: sessionNote,
                               joints: joints, cameraTransform: cameraTransform)
         conn.send(content: data, completion: .idempotent)
     }
@@ -39,10 +41,11 @@ final class UDPSender {
     // MARK: - Binary frame builder
 
     private func buildFrame(timestamp: Double, frameIndex: UInt32,
+                            subjectID: String, sessionNote: String,
                             joints: [(name: String, transform: simd_float4x4)],
                             cameraTransform: simd_float4x4) -> Data {
         let jointCount = joints.count
-        var data = Data(count: 1 + 8 + 4 + jointCount * 28 + 28)
+        var data = Data(count: 1 + 8 + 4 + 32 + 32 + jointCount * 28 + 28)
         var offset = 0
 
         // type = 1
@@ -57,6 +60,16 @@ final class UDPSender {
         var idx = frameIndex
         Swift.withUnsafeBytes(of: &idx) { data.replaceSubrange(offset..<offset+4, with: $0) }
         offset += 4
+
+        // subject_id (32 bytes, UTF-8, zero-padded)
+        let subjectBytes = subjectID.utf8.prefix(32)
+        data.replaceSubrange(offset..<offset+subjectBytes.count, with: subjectBytes)
+        offset += 32
+
+        // session_note (32 bytes, UTF-8, zero-padded)
+        let sessionBytes = sessionNote.utf8.prefix(32)
+        data.replaceSubrange(offset..<offset+sessionBytes.count, with: sessionBytes)
+        offset += 32
 
         // joints: pos(3×Float32) + rot(4×Float32) = 28 bytes each
         for j in joints {

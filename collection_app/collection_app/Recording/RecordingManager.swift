@@ -63,7 +63,7 @@ final class RecordingManager: NSObject, ObservableObject {
         onStatusChange?("REC (\(parts.joined(separator: " + ")))")
     }
 
-    func stopRecording(dataID: String, saveCSV: Bool, saveVideo: Bool) {
+    func stopRecording(saveCSV: Bool, saveVideo: Bool) {
         isRecording = false
         onStatusChange?("Saving...")
 
@@ -71,14 +71,14 @@ final class RecordingManager: NSObject, ObservableObject {
             assetWriterInput?.markAsFinished()
             let url = videoOutputURL
             writer.finishWriting { [weak self] in
-                if let src = url, let dst = self?.finalVideoURL(dataID: dataID) {
+                if let src = url, let dst = self?.finalVideoURL() {
                     try? FileManager.default.moveItem(at: src, to: dst)
                     self?.onStatusChange?("Video saved: \(dst.lastPathComponent)")
                 }
             }
         }
 
-        if saveCSV { exportCSV(dataID: dataID) }
+        if saveCSV { exportCSV() }
         frames.removeAll()
         onStatusChange?("Saved \(frameCount) frames")
     }
@@ -116,8 +116,11 @@ final class RecordingManager: NSObject, ObservableObject {
             let host = defaults.string(forKey: "udp_host") ?? ""
             let portStr = defaults.string(forKey: "udp_port") ?? ""
             let port = UInt16(portStr) ?? 0
+            let subjectID = defaults.string(forKey: "subject_id") ?? ""
+            let sessionNote = defaults.string(forKey: "session_note") ?? ""
             udpSender.configure(host: host, port: port)
             udpSender.send(timestamp: t, frameIndex: UInt32(index),
+                           subjectID: subjectID, sessionNote: sessionNote,
                            joints: joints, cameraTransform: cameraTransform)
         }
 
@@ -239,27 +242,35 @@ final class RecordingManager: NSObject, ObservableObject {
         writerReady = true
     }
 
-    private func finalVideoURL(dataID: String) -> URL? {
+    private func finalVideoURL() -> URL? {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("BodyMotionRecordings", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("\(baseFileName()).mp4")
+    }
+
+    // MARK: - Filename
+
+    private func baseFileName() -> String {
+        let defaults = UserDefaults.standard
+        let subjectID = defaults.string(forKey: "subject_id") ?? ""
+        let sessionNote = defaults.string(forKey: "session_note") ?? ""
         let dateStr = dateFormatter.string(from: Date())
-        let name = dataID.isEmpty ? dateStr : "\(dateStr)_\(dataID)"
-        return dir.appendingPathComponent("\(name).mp4")
+        let parts = [subjectID, sessionNote].filter { !$0.isEmpty }
+        let prefix = parts.isEmpty ? "" : "\(parts.joined(separator: "_"))_"
+        return "\(prefix)\(dateStr)"
     }
 
     // MARK: - CSV export
 
-    private func exportCSV(dataID: String) {
+    private func exportCSV() {
         guard !frames.isEmpty else { return }
 
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("BodyMotionRecordings", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        let dateStr = dateFormatter.string(from: Date())
-        let name = dataID.isEmpty ? dateStr : "\(dateStr)_\(dataID)"
-        let csvURL = dir.appendingPathComponent("\(name).csv")
+        let csvURL = dir.appendingPathComponent("\(baseFileName()).csv")
 
         var csv = "timestamp,frame,joint,pos_x,pos_y,pos_z,rot_x,rot_y,rot_z,rot_w\n"
         for frame in frames {

@@ -49,7 +49,8 @@ cd collection_app
 
 | Option | Description |
 |---|---|
-| Data ID | Custom name appended to timestamp in filename (default: empty, uses timestamp only) |
+| Subject ID | Participant identifier, e.g. `P001`. Persists across recordings. Max 32 ASCII chars (`a-z`, `0-9`, `_`, `-`) |
+| Session Note | Activity label for this recording, e.g. `walking`. Retains last value. Max 32 ASCII chars |
 | Save video | Toggle to record `.mp4` alongside CSV (default: off) |
 
 ### UDP Streaming
@@ -77,12 +78,13 @@ All files are saved to `Documents/BodyMotionRecordings/` and accessible via:
 ### File Naming
 
 ```
-{timestamp}.csv                     — empty Data ID
-{timestamp}_{name}.csv              — custom Data ID
-{timestamp}.mp4                     — video (same naming)
+{subject_id}_{session_note}_{timestamp}.csv    — both fields set
+{subject_id}_{timestamp}.csv                  — session note empty
+{timestamp}.csv                               — both empty
+{timestamp}.mp4                               — video (same naming)
 ```
 
-Example: `2026-05-22-143001_mysession.csv`
+Example: `P001_walking_2026-05-22-143001.csv`
 
 ### CSV Format
 
@@ -106,7 +108,7 @@ The hierarchy is **flattened**: each row is one joint. A single frame produces ~
 
 Each frame is a fixed-size binary packet sent over UDP to the configured host:port.
 
-### Frame Layout (2561 bytes total)
+### Frame Layout (2625 bytes total)
 
 ```
 Offset  Size  Type      Field
@@ -114,10 +116,12 @@ Offset  Size  Type      Field
 0       1     UInt8     type = 1
 1       8     Float64   timestamp (Unix epoch, seconds since 1970-01-01)
 9       4     UInt32    frameIndex
-13      2520  Float32[] joints[90] — 7 floats each (pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w)
-2533    28    Float32[] camera       — 7 floats (same layout)
+13      32    UTF-8     subject_id (zero-padded)
+45      32    UTF-8     session_note (zero-padded)
+77      2520  Float32[] joints[90] — 7 floats each (pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w)
+2597    28    Float32[] camera       — 7 floats (same layout)
 ──────  ────
-Total:  2561 bytes
+Total:  2625 bytes
 ```
 
 All multi-byte values are **little-endian**. IP fragmentation splits this into 2 packets; the kernel reassembles automatically.
@@ -172,17 +176,19 @@ JOINT_COUNT = 90
 while True:
     data, addr = sock.recvfrom(4096)
     ts, idx = struct.unpack('<dI', data[1:13])
+    subject_id = data[13:45].decode('utf-8').rstrip('\x00')
+    session_note = data[45:77].decode('utf-8').rstrip('\x00')
     now = time.time()
     latency = now - ts
 
     joints = []
     for i in range(JOINT_COUNT):
-        offset = 13 + i * 28
+        offset = 77 + i * 28
         vals = struct.unpack('<7f', data[offset:offset+28])
         joints.append(vals)
 
     cam = struct.unpack('<7f', data[-28:])
-    print(f"frame {idx}  latency={latency*1000:.0f}ms  joints={len(joints)}  cam_pos=({cam[0]:.2f},{cam[1]:.2f},{cam[2]:.2f})")
+    print(f"[{subject_id}/{session_note}] frame {idx}  latency={latency*1000:.0f}ms  joints={len(joints)}  cam_pos=({cam[0]:.2f},{cam[1]:.2f},{cam[2]:.2f})")
 ```
 
 ## Project Structure

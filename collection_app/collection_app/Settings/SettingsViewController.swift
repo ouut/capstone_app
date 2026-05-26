@@ -1,9 +1,10 @@
 import UIKit
 import UniformTypeIdentifiers
 
-final class SettingsViewController: UIViewController {
+final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
-    private let dataIDField = UITextField()
+    private let subjectIDField = UITextField()
+    private let sessionNoteField = UITextField()
     private let saveCSVToggle = UISwitch()
     private let saveVideoToggle = UISwitch()
     private let hostField = UITextField()
@@ -15,7 +16,8 @@ final class SettingsViewController: UIViewController {
     var recordingManager: RecordingManager?
 
     private let defaults = UserDefaults.standard
-    private let kDataID = "recording_data_id"
+    private let kSubjectID = "subject_id"
+    private let kSessionNote = "session_note"
     private let kSaveCSV = "recording_save_csv"
     private let kSaveVideo = "recording_save_video"
     private let kHost = "udp_host"
@@ -51,28 +53,27 @@ final class SettingsViewController: UIViewController {
         card1Stack.translatesAutoresizingMaskIntoConstraints = false
         card1.addSubview(card1Stack)
 
-        // Data ID row
-        let idRow = UIStackView()
-        idRow.axis = .horizontal
-        idRow.spacing = 12
-        idRow.alignment = .center
-        idRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
-        idRow.isLayoutMarginsRelativeArrangement = true
+        // Subject ID row
+        subjectIDField.borderStyle = .none
+        subjectIDField.font = .systemFont(ofSize: 16)
+        subjectIDField.textAlignment = .right
+        subjectIDField.textColor = .secondaryLabel
+        subjectIDField.placeholder = "P001"
+        subjectIDField.delegate = self
+        subjectIDField.addTarget(self, action: #selector(subjectIDChanged), for: .editingChanged)
+        card1Stack.addArrangedSubview(labeledRow("Subject ID", subjectIDField))
 
-        let idLabel = UILabel()
-        idLabel.text = "Data ID"
-        idLabel.font = .systemFont(ofSize: 16)
-        idLabel.setContentHuggingPriority(.required, for: .horizontal)
-        idRow.addArrangedSubview(idLabel)
+        card1Stack.addArrangedSubview(divider())
 
-        dataIDField.borderStyle = .none
-        dataIDField.font = .systemFont(ofSize: 16)
-        dataIDField.textAlignment = .right
-        dataIDField.textColor = .secondaryLabel
-        dataIDField.placeholder = "yyyy-MM-dd-HHmmss"
-        dataIDField.addTarget(self, action: #selector(dataIDChanged), for: .editingChanged)
-        idRow.addArrangedSubview(dataIDField)
-        card1Stack.addArrangedSubview(idRow)
+        // Session Note row
+        sessionNoteField.borderStyle = .none
+        sessionNoteField.font = .systemFont(ofSize: 16)
+        sessionNoteField.textAlignment = .right
+        sessionNoteField.textColor = .secondaryLabel
+        sessionNoteField.placeholder = "walking"
+        sessionNoteField.delegate = self
+        sessionNoteField.addTarget(self, action: #selector(sessionNoteChanged), for: .editingChanged)
+        card1Stack.addArrangedSubview(labeledRow("Session Note", sessionNoteField))
 
         card1Stack.addArrangedSubview(divider())
 
@@ -292,9 +293,8 @@ final class SettingsViewController: UIViewController {
     // MARK: - Settings
 
     private func loadSettings() {
-        let now = Date()
-        let defaultID = dateFormatter.string(from: now)
-        dataIDField.text = defaults.string(forKey: kDataID) ?? defaultID
+        subjectIDField.text = defaults.string(forKey: kSubjectID) ?? ""
+        sessionNoteField.text = defaults.string(forKey: kSessionNote) ?? ""
         saveCSVToggle.isOn = defaults.object(forKey: kSaveCSV) == nil ? true : defaults.bool(forKey: kSaveCSV)
         saveVideoToggle.isOn = defaults.bool(forKey: kSaveVideo)
         hostField.text = defaults.string(forKey: kHost) ?? ""
@@ -307,8 +307,12 @@ final class SettingsViewController: UIViewController {
         }
     }
 
-    @objc private func dataIDChanged() {
-        defaults.set(dataIDField.text ?? "", forKey: kDataID)
+    @objc private func subjectIDChanged() {
+        defaults.set(subjectIDField.text ?? "", forKey: kSubjectID)
+    }
+
+    @objc private func sessionNoteChanged() {
+        defaults.set(sessionNoteField.text ?? "", forKey: kSessionNote)
     }
 
     @objc private func saveVideoToggled() {
@@ -399,8 +403,17 @@ final class SettingsViewController: UIViewController {
         return true
     }
 
-    var dataID: String { dataIDField.text ?? dateFormatter.string(from: Date()) }
     var saveVideo: Bool { saveVideoToggle.isOn }
+
+    // MARK: - UITextFieldDelegate
+
+    func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+        guard string.rangeOfCharacter(from: allowed.inverted) == nil else { return false }
+        guard let current = textField.text as NSString? else { return true }
+        let next = current.replacingCharacters(in: range, with: string)
+        return next.utf8.count <= 32
+    }
 
     // MARK: - Browse files
 
@@ -440,10 +453,3 @@ extension SettingsViewController: UIDocumentPickerDelegate {
         present(vc, animated: true)
     }
 }
-
-private let dateFormatter: DateFormatter = {
-    let f = DateFormatter()
-    f.dateFormat = "yyyy-MM-dd-HHmmss"
-    f.locale = Locale(identifier: "en_US_POSIX")
-    return f
-}()

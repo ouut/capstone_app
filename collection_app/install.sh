@@ -106,21 +106,21 @@ echo -e "${GREEN}✓${NC} App: ${APP_PATH}"
 echo ""
 echo -e "${YELLOW}→${NC} 安装到 ${DEVICE_NAME}..."
 
-if command -v ios-deploy &>/dev/null; then
-    if ios-deploy --bundle "$APP_PATH" 2>&1; then
+CORE_DEVICE_ID=$(xcrun devicectl list devices 2>&1 | grep "$DEVICE_NAME" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1)
+
+if [ -n "$CORE_DEVICE_ID" ]; then
+    if xcrun devicectl device install app --device "$CORE_DEVICE_ID" "$APP_PATH" 2>&1; then
         echo ""
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}  安装完成！${NC}"
         echo -e "${GREEN}========================================${NC}"
         exit 0
     fi
-    echo -e "${YELLOW}⚠ ios-deploy 失败，尝试 devicectl...${NC}"
+    echo -e "${YELLOW}⚠ devicectl 失败，尝试 ios-deploy...${NC}"
 fi
 
-CORE_DEVICE_ID=$(xcrun devicectl list devices 2>&1 | grep "$DEVICE_NAME" | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1)
-
-if [ -n "$CORE_DEVICE_ID" ]; then
-    xcrun devicectl device install app --device "$CORE_DEVICE_ID" "$APP_PATH" 2>&1
+if command -v ios-deploy &>/dev/null; then
+    ios-deploy --bundle "$APP_PATH" 2>&1
 else
     echo -e "${RED}✗ 无法自动安装。${NC}"
     echo "  手动: Xcode → Devices → 拖入 ${APP_PATH}"

@@ -25,7 +25,6 @@ class ViewController: UIViewController, ARSessionDelegate {
     private let recLabel = UILabel()
     private let settingsButton = UIButton(type: .system)
     private let statusLabel = UILabel()
-    private let wsStatusLabel = UILabel()
     private var latestCameraFrame: ARFrame?
 
     private let defaults = UserDefaults.standard
@@ -145,14 +144,6 @@ class ViewController: UIViewController, ARSessionDelegate {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(statusLabel)
 
-        // ── WS diagnostic label ──
-        wsStatusLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-        wsStatusLabel.textColor = .systemYellow
-        wsStatusLabel.textAlignment = .center
-        wsStatusLabel.numberOfLines = 2
-        wsStatusLabel.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(wsStatusLabel)
-
         NSLayoutConstraint.activate([
             // Record button
             recordButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -176,10 +167,6 @@ class ViewController: UIViewController, ARSessionDelegate {
             statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
             statusLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 22),
 
-            // WS status label
-            wsStatusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            wsStatusLabel.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -4),
-            wsStatusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 160)
         ])
     }
 
@@ -242,13 +229,7 @@ class ViewController: UIViewController, ARSessionDelegate {
             }
             .store(in: &cancellables)
 
-        recordingManager.$wsDiag
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] msg in
-                self?.wsStatusLabel.text = msg.isEmpty ? "" : "  \(msg)  "
-            }
-            .store(in: &cancellables)
-    }
+}
 
     // MARK: - Snapshot
 

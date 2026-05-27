@@ -1,8 +1,10 @@
 import UIKit
 import UniformTypeIdentifiers
+import Combine
 
 final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
+    // Recording tab
     private let subjectIDField = UITextField()
     private let sessionNoteField = UITextField()
     private let saveCSVToggle = UISwitch()
@@ -13,14 +15,19 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let hostError = UILabel()
     private let portError = UILabel()
 
-    // WebSocket
+    // WebSocket tab
     private let wsURLField = UITextField()
     private let wsToggle = UISwitch()
     private let wsVideoToggle = UISwitch()
     private let wsURLError = UILabel()
     private let wsVideoRow = UIStackView()
+    private let wsLogView = UITextView()
+
+    private var wsLogLines: [String] = []
+    private let maxLogLines = 50
 
     var recordingManager: RecordingManager?
+    private var cancellables = Set<AnyCancellable>()
 
     private let defaults = UserDefaults.standard
     private let kSubjectID = "subject_id"
@@ -34,12 +41,22 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let kWSEnabled = "ws_enabled"
     private let kWSVideo = "ws_video_enabled"
 
+    // Tab containers
+    private let recordingStack = UIStackView()
+    private let wsStack = UIStackView()
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.systemGroupedBackground
         title = "Settings"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(doneTapped))
         setupUI()
         loadSettings()
+        observeWS()
+    }
+
+    @objc private func doneTapped() {
+        dismiss(animated: true)
     }
 
     private func setupUI() {
@@ -47,14 +64,56 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
 
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.spacing = 24
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(stack)
+        let rootStack = UIStackView()
+        rootStack.axis = .vertical
+        rootStack.spacing = 16
+        rootStack.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(rootStack)
 
-        // ── Section: Recording Config ──
-        stack.addArrangedSubview(sectionHeader("RECORDING CONFIG"))
+        // ── Segmented control ──
+        let seg = UISegmentedControl(items: ["Recording", "WebSocket"])
+        seg.selectedSegmentIndex = 0
+        seg.addTarget(self, action: #selector(tabChanged(_:)), for: .valueChanged)
+        rootStack.addArrangedSubview(seg)
+
+        // ── Recording tab content ──
+        recordingStack.axis = .vertical
+        recordingStack.spacing = 24
+        buildRecordingTab()
+        rootStack.addArrangedSubview(recordingStack)
+
+        // ── WebSocket tab content ──
+        wsStack.axis = .vertical
+        wsStack.spacing = 24
+        wsStack.isHidden = true
+        buildWebSocketTab()
+        rootStack.addArrangedSubview(wsStack)
+
+        // Layout
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+
+            rootStack.topAnchor.constraint(equalTo: scroll.topAnchor, constant: 16),
+            rootStack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -16),
+            rootStack.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 16),
+            rootStack.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -16),
+            rootStack.widthAnchor.constraint(equalTo: scroll.widthAnchor, constant: -32)
+        ])
+    }
+
+    @objc private func tabChanged(_ seg: UISegmentedControl) {
+        recordingStack.isHidden = seg.selectedSegmentIndex != 0
+        wsStack.isHidden = seg.selectedSegmentIndex != 1
+    }
+
+    // MARK: - Recording tab
+
+    private func buildRecordingTab() {
+        // ── Recording Config ──
+        recordingStack.addArrangedSubview(sectionHeader("RECORDING CONFIG"))
 
         let card1 = cardView()
         let card1Stack = UIStackView()
@@ -63,7 +122,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         card1Stack.translatesAutoresizingMaskIntoConstraints = false
         card1.addSubview(card1Stack)
 
-        // Subject ID row
         subjectIDField.borderStyle = .none
         subjectIDField.font = .systemFont(ofSize: 16)
         subjectIDField.textAlignment = .right
@@ -75,7 +133,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
         card1Stack.addArrangedSubview(divider())
 
-        // Session Note row
         sessionNoteField.borderStyle = .none
         sessionNoteField.font = .systemFont(ofSize: 16)
         sessionNoteField.textAlignment = .right
@@ -87,32 +144,27 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
         card1Stack.addArrangedSubview(divider())
 
-        // Save CSV row
         saveCSVToggle.isOn = true
         saveCSVToggle.addTarget(self, action: #selector(saveCSVToggled), for: .valueChanged)
         card1Stack.addArrangedSubview(toggleRow("Save CSV file", saveCSVToggle))
 
         card1Stack.addArrangedSubview(divider())
 
-        // Save video row
         let videoRow = UIStackView()
         videoRow.axis = .horizontal
         videoRow.spacing = 8
         videoRow.alignment = .center
         videoRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
         videoRow.isLayoutMarginsRelativeArrangement = true
-
         let videoLabel = UILabel()
         videoLabel.text = "Save video file"
         videoLabel.font = .systemFont(ofSize: 16)
         videoRow.addArrangedSubview(videoLabel)
-
         let hint = UILabel()
         hint.text = "(default: off)"
         hint.font = .systemFont(ofSize: 13)
         hint.textColor = .tertiaryLabel
         videoRow.addArrangedSubview(hint)
-
         videoRow.addArrangedSubview(UIView())
         saveVideoToggle.addTarget(self, action: #selector(saveVideoToggled), for: .valueChanged)
         videoRow.addArrangedSubview(saveVideoToggle)
@@ -124,10 +176,10 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             card1Stack.leadingAnchor.constraint(equalTo: card1.leadingAnchor, constant: 16),
             card1Stack.trailingAnchor.constraint(equalTo: card1.trailingAnchor, constant: -16)
         ])
-        stack.addArrangedSubview(card1)
+        recordingStack.addArrangedSubview(card1)
 
-        // ── Section: UDP Streaming ──
-        stack.addArrangedSubview(sectionHeader("UDP STREAMING"))
+        // ── UDP Streaming ──
+        recordingStack.addArrangedSubview(sectionHeader("UDP STREAMING"))
 
         let card2 = cardView()
         let card2Stack = UIStackView()
@@ -136,7 +188,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         card2Stack.translatesAutoresizingMaskIntoConstraints = false
         card2.addSubview(card2Stack)
 
-        // Host row
         hostField.borderStyle = .none
         hostField.font = .systemFont(ofSize: 16)
         hostField.textAlignment = .right
@@ -149,7 +200,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         hostField.addTarget(self, action: #selector(hostEditingDidEnd), for: .editingDidEnd)
         card2Stack.addArrangedSubview(labeledRow("IP / Hostname", hostField))
 
-        // Host error
         hostError.font = .systemFont(ofSize: 11)
         hostError.textColor = .systemRed
         hostError.isHidden = true
@@ -157,7 +207,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
         card2Stack.addArrangedSubview(divider())
 
-        // Port row
         portField.borderStyle = .none
         portField.font = .systemFont(ofSize: 16)
         portField.textAlignment = .right
@@ -168,7 +217,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         portField.addTarget(self, action: #selector(portEditingDidEnd), for: .editingDidEnd)
         card2Stack.addArrangedSubview(labeledRow("Port", portField))
 
-        // Port error
         portError.font = .systemFont(ofSize: 11)
         portError.textColor = .systemRed
         portError.isHidden = true
@@ -176,7 +224,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
         card2Stack.addArrangedSubview(divider())
 
-        // UDP toggle row
         let udpRow = UIStackView()
         udpRow.axis = .horizontal
         udpRow.spacing = 8
@@ -203,10 +250,28 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             card2Stack.leadingAnchor.constraint(equalTo: card2.leadingAnchor, constant: 16),
             card2Stack.trailingAnchor.constraint(equalTo: card2.trailingAnchor, constant: -16)
         ])
-        stack.addArrangedSubview(card2)
+        recordingStack.addArrangedSubview(card2)
 
-        // ── Section: WebSocket Streaming ──
-        stack.addArrangedSubview(sectionHeader("WEBSOCKET STREAMING"))
+        // ── Browse Files ──
+        recordingStack.addArrangedSubview(sectionHeader("RECORDED FILES"))
+
+        let browseBtn = UIButton(type: .system)
+        browseBtn.setTitle("Browse Recordings\u{2026}", for: .normal)
+        browseBtn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        browseBtn.backgroundColor = .systemBlue
+        browseBtn.setTitleColor(.white, for: .normal)
+        browseBtn.layer.cornerRadius = 10
+        browseBtn.layer.cornerCurve = .continuous
+        browseBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        browseBtn.addTarget(self, action: #selector(browseFiles), for: .touchUpInside)
+        recordingStack.addArrangedSubview(browseBtn)
+    }
+
+    // MARK: - WebSocket tab
+
+    private func buildWebSocketTab() {
+        // ── WebSocket Config ──
+        wsStack.addArrangedSubview(sectionHeader("CONNECTION"))
 
         let card3 = cardView()
         let card3Stack = UIStackView()
@@ -264,35 +329,43 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             card3Stack.leadingAnchor.constraint(equalTo: card3.leadingAnchor, constant: 16),
             card3Stack.trailingAnchor.constraint(equalTo: card3.trailingAnchor, constant: -16)
         ])
-        stack.addArrangedSubview(card3)
+        wsStack.addArrangedSubview(card3)
 
-        // ── Section: Browse Files ──
-        stack.addArrangedSubview(sectionHeader("RECORDED FILES"))
+        // ── WS Log ──
+        wsStack.addArrangedSubview(sectionHeader("LOG"))
 
-        let browseBtn = UIButton(type: .system)
-        browseBtn.setTitle("Browse Recordings\u{2026}", for: .normal)
-        browseBtn.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
-        browseBtn.backgroundColor = .systemBlue
-        browseBtn.setTitleColor(.white, for: .normal)
-        browseBtn.layer.cornerRadius = 10
-        browseBtn.layer.cornerCurve = .continuous
-        browseBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        browseBtn.addTarget(self, action: #selector(browseFiles), for: .touchUpInside)
-        stack.addArrangedSubview(browseBtn)
+        let logCard = cardView()
+        wsLogView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        wsLogView.textColor = .label
+        wsLogView.backgroundColor = .systemBackground
+        wsLogView.isEditable = false
+        wsLogView.isScrollEnabled = true
+        wsLogView.translatesAutoresizingMaskIntoConstraints = false
+        logCard.addSubview(wsLogView)
 
-        // Layout
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-
-            stack.topAnchor.constraint(equalTo: scroll.topAnchor, constant: 16),
-            stack.bottomAnchor.constraint(equalTo: scroll.bottomAnchor, constant: -16),
-            stack.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -16),
-            stack.widthAnchor.constraint(equalTo: scroll.widthAnchor, constant: -32)
+            wsLogView.topAnchor.constraint(equalTo: logCard.topAnchor, constant: 8),
+            wsLogView.bottomAnchor.constraint(equalTo: logCard.bottomAnchor, constant: -8),
+            wsLogView.leadingAnchor.constraint(equalTo: logCard.leadingAnchor, constant: 12),
+            wsLogView.trailingAnchor.constraint(equalTo: logCard.trailingAnchor, constant: -12),
+            wsLogView.heightAnchor.constraint(equalToConstant: 200)
         ])
+        wsStack.addArrangedSubview(logCard)
+    }
+
+    private func observeWS() {
+        recordingManager?.$wsDiag
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] msg in
+                guard let self, !msg.isEmpty else { return }
+                let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+                wsLogLines.append("[\(ts)] \(msg)")
+                if wsLogLines.count > maxLogLines { wsLogLines.removeFirst() }
+                wsLogView.text = wsLogLines.joined(separator: "\n")
+                let bottom = NSMakeRange(wsLogView.text.count - 1, 1)
+                wsLogView.scrollRangeToVisible(bottom)
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Helpers
@@ -371,13 +444,11 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         hostField.text = defaults.string(forKey: kHost) ?? ""
         portField.text = defaults.string(forKey: kPort) ?? ""
         udpToggle.isOn = defaults.bool(forKey: kUDP)
-        // If host/port are invalid and UDP was on, force off
         if udpToggle.isOn && !validateHostPort(silent: true) {
             udpToggle.isOn = false
             defaults.set(false, forKey: kUDP)
         }
 
-        // WebSocket
         wsURLField.text = defaults.string(forKey: kWSURL) ?? ""
         wsToggle.isOn = defaults.bool(forKey: kWSEnabled)
         wsVideoToggle.isOn = defaults.bool(forKey: kWSVideo)
@@ -410,7 +481,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     @objc private func hostChanged() {
         let text = hostField.text ?? ""
         defaults.set(text, forKey: kHost)
-        // Only clear error, don't validate while typing
         hostError.isHidden = true
     }
 
@@ -463,16 +533,14 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
     private func isValidHost(_ host: String) -> Bool {
         if host.isEmpty { return false }
-        // IPv4: 1.2.3.4
         let ipv4Pattern = #"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"#
         if host.range(of: ipv4Pattern, options: .regularExpression) != nil {
             let parts = host.split(separator: ".")
             return parts.allSatisfy { p in
                 guard let n = Int(p), n >= 0, n <= 255 else { return false }
-                return String(n) == String(p)  // reject "01" style
+                return String(n) == String(p)
             }
         }
-        // Hostname: a-z, 0-9, hyphen, dots, at least one dot
         let hostPattern = #"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$"#
         if host.range(of: hostPattern, options: .regularExpression) != nil {
             return true

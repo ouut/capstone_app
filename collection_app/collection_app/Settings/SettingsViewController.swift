@@ -9,6 +9,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let sessionNoteField = UITextField()
     private let saveCSVToggle = UISwitch()
     private let saveVideoToggle = UISwitch()
+    private let skeletalFPSField = UITextField()
     private let hostField = UITextField()
     private let portField = UITextField()
     private let udpToggle = UISwitch()
@@ -60,6 +61,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let kTCPPort = "tcp_port"
     private let kTCPEnabled = "tcp_enabled"
     private let kWSURL = "ws_url"
+    private let kSkeletalFPS = "skeletal_fps"
     private let kWSEnabled = "ws_enabled"
 
     // Tab containers
@@ -208,6 +210,37 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         saveVideoToggle.addTarget(self, action: #selector(saveVideoToggled), for: .valueChanged)
         videoRow.addArrangedSubview(saveVideoToggle)
         card1Stack.addArrangedSubview(videoRow)
+
+        card1Stack.addArrangedSubview(divider())
+
+        skeletalFPSField.borderStyle = .none
+        skeletalFPSField.font = .systemFont(ofSize: 16)
+        skeletalFPSField.textAlignment = .right
+        skeletalFPSField.textColor = .secondaryLabel
+        skeletalFPSField.placeholder = "Max"
+        skeletalFPSField.keyboardType = .numberPad
+        skeletalFPSField.delegate = self
+        skeletalFPSField.addTarget(self, action: #selector(skeletalFPSChanged), for: .editingChanged)
+        let fpsRow = UIStackView()
+        fpsRow.axis = .horizontal
+        fpsRow.spacing = 8
+        fpsRow.alignment = .center
+        fpsRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        fpsRow.isLayoutMarginsRelativeArrangement = true
+        let fpsLabel = UILabel()
+        fpsLabel.text = "Skeletal FPS"
+        fpsLabel.font = .systemFont(ofSize: 16)
+        fpsLabel.setContentHuggingPriority(.required, for: .horizontal)
+        fpsRow.addArrangedSubview(fpsLabel)
+        let fpsHint = UILabel()
+        fpsHint.text = "1–60, Max for native"
+        fpsHint.font = .systemFont(ofSize: 13)
+        fpsHint.textColor = .tertiaryLabel
+        fpsRow.addArrangedSubview(fpsHint)
+        fpsRow.addArrangedSubview(UIView())
+        skeletalFPSField.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        fpsRow.addArrangedSubview(skeletalFPSField)
+        card1Stack.addArrangedSubview(fpsRow)
 
         NSLayoutConstraint.activate([
             card1Stack.topAnchor.constraint(equalTo: card1.topAnchor, constant: 4),
@@ -593,7 +626,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         return row
     }
 
-    private func labeledRow(_ label: String, _ field: UITextField) -> UIStackView {
+    private func labeledRow(_ label: String, _ field: UIView) -> UIStackView {
         let row = UIStackView()
         row.axis = .horizontal
         row.spacing = 12
@@ -643,6 +676,8 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         sessionNoteField.text = defaults.string(forKey: kSessionNote) ?? ""
         saveCSVToggle.isOn = defaults.object(forKey: kSaveCSV) == nil ? true : defaults.bool(forKey: kSaveCSV)
         saveVideoToggle.isOn = defaults.bool(forKey: kSaveVideo)
+        let fps = defaults.integer(forKey: kSkeletalFPS)
+        skeletalFPSField.text = fps > 0 ? String(fps) : ""
         hostField.text = defaults.string(forKey: kHost) ?? ""
         portField.text = defaults.string(forKey: kPort) ?? ""
         udpToggle.isOn = defaults.bool(forKey: kUDP)
@@ -689,6 +724,24 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
     @objc private func saveCSVToggled() {
         defaults.set(saveCSVToggle.isOn, forKey: kSaveCSV)
+    }
+
+    @objc private func skeletalFPSChanged() {
+        let text = skeletalFPSField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        let fps = Int(text) ?? 0
+        defaults.set(fps, forKey: kSkeletalFPS)
+    }
+
+    func textFieldDidEndEditing(_ textField: UITextField) {
+        if textField == skeletalFPSField {
+            let text = textField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+            guard !text.isEmpty, let fps = Int(text) else { return }
+            let clamped = min(max(fps, 1), 60)
+            if clamped != fps {
+                textField.text = String(clamped)
+                defaults.set(clamped, forKey: kSkeletalFPS)
+            }
+        }
     }
 
     // MARK: - UDP settings

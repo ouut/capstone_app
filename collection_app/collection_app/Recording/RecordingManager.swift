@@ -25,6 +25,7 @@ final class RecordingManager: NSObject, ObservableObject {
     private var frames: [JointFrame] = []
     private var startTime: TimeInterval = 0
     private var index = 0
+    private var lastSendTime: TimeInterval = 0
 
     // CSV
     private var csvEnabled = true
@@ -163,9 +164,6 @@ final class RecordingManager: NSObject, ObservableObject {
         let xforms = skeleton.jointModelTransforms
         var joints: [(name: String, transform: simd_float4x4)] = []
         for i in 0..<names.count { joints.append((names[i], xforms[i])) }
-        if csvEnabled {
-            frames.append(JointFrame(timestamp: t, frameIndex: index, joints: joints, cameraTransform: cameraTransform))
-        }
 
         // Video
         if videoEnabled, let pb = cameraPixelBuffer {
@@ -177,59 +175,78 @@ final class RecordingManager: NSObject, ObservableObject {
         let subjectID = defaults.string(forKey: "subject_id") ?? ""
         let sessionNote = defaults.string(forKey: "session_note") ?? ""
 
-        // UDP
-        if defaults.bool(forKey: "udp_enabled") {
-            let host = defaults.string(forKey: "udp_host") ?? ""
-            let portStr = defaults.string(forKey: "udp_port") ?? ""
-            let port = UInt16(portStr) ?? 0
-            udpSender.configure(host: host, port: port)
-            udpSender.send(timestamp: t, frameIndex: UInt32(index),
-                           subjectID: subjectID, sessionNote: sessionNote,
-                           joints: joints, cameraTransform: cameraTransform)
-        }
-
-        // Build skeletal payload once for all transports
-        let payload = buildJointsPayload(timestamp: t, frameIndex: UInt32(index),
-                                         subjectID: subjectID, sessionNote: sessionNote,
-                                         joints: joints, cameraTransform: cameraTransform)
-
-        // WebSocket
-        let wsEnabled = defaults.bool(forKey: "ws_enabled")
-        if wsEnabled {
-            if defaults.bool(forKey: "udp_enabled") {
-                defaults.set(false, forKey: "udp_enabled")
-                udpSender.stop()
-            }
-
-            let url = defaults.string(forKey: "ws_url") ?? ""
-            webSocketSender.configure(urlString: url)
-            webSocketSender.connect()
-            webSocketSender.sendSkeletal(payload: payload)
-
-            if index % 60 == 0 {
-                let msg = "WS: sent skel #\(index)"
-                wsDiag = msg
-                wsLog.append(msg)
-                if wsLog.count > maxLogLines { wsLog.removeFirst() }
-            }
+        // FPS throttle for skeletal network sends (0 = max / native rate)
+        let skeletalFPS = defaults.integer(forKey: "skeletal_fps")
+        let shouldSend: Bool
+        if skeletalFPS > 0 {
+            let interval = 1.0 / Double(skeletalFPS)
+            shouldSend = lastSendTime == 0 || (now - lastSendTime) >= interval
         } else {
-            webSocketSender.disconnect()
+            shouldSend = true
         }
 
-        // TCP
-        if defaults.bool(forKey: "tcp_enabled") {
-            let tHost = defaults.string(forKey: "tcp_host") ?? ""
-            let tPortStr = defaults.string(forKey: "tcp_port") ?? ""
-            let tPort = UInt16(tPortStr) ?? 0
-            tcpSender.configure(host: tHost, port: tPort)
-            tcpSender.connect()
-            tcpSender.send(payload: payload)
+        if shouldSend {
+            lastSendTime = now
 
-            if index % 60 == 0 {
-                let msg = "TCP: sent skel #\(index)"
-                tcpDiag = msg
-                tcpLog.append(msg)
-                if tcpLog.count > maxLogLines { tcpLog.removeFirst() }
+            // CSV
+            if csvEnabled {
+                frames.append(JointFrame(timestamp: t, frameIndex: index, joints: joints, cameraTransform: cameraTransform))
+            }
+
+            // UDP
+            if defaults.bool(forKey: "udp_enabled") {
+                let host = defaults.string(forKey: "udp_host") ?? ""
+                let portStr = defaults.string(forKey: "udp_port") ?? ""
+                let port = UInt16(portStr) ?? 0
+                udpSender.configure(host: host, port: port)
+                udpSender.send(timestamp: t, frameIndex: UInt32(index),
+                               subjectID: subjectID, sessionNote: sessionNote,
+                               joints: joints, cameraTransform: cameraTransform)
+            }
+
+            // Build skeletal payload once for all transports
+            let payload = buildJointsPayload(timestamp: t, frameIndex: UInt32(index),
+                                             subjectID: subjectID, sessionNote: sessionNote,
+                                             joints: joints, cameraTransform: cameraTransform)
+
+            // WebSocket
+            let wsEnabled = defaults.bool(forKey: "ws_enabled")
+            if wsEnabled {
+                if defaults.bool(forKey: "udp_enabled") {
+                    defaults.set(false, forKey: "udp_enabled")
+                    udpSender.stop()
+                }
+
+                let url = defaults.string(forKey: "ws_url") ?? ""
+                webSocketSender.configure(urlString: url)
+                webSocketSender.connect()
+                webSocketSender.sendSkeletal(payload: payload)
+
+                if index % 60 == 0 {
+                    let msg = "WS: sent skel #\(index)"
+                    wsDiag = msg
+                    wsLog.append(msg)
+                    if wsLog.count > maxLogLines { wsLog.removeFirst() }
+                }
+            } else {
+                webSocketSender.disconnect()
+            }
+
+            // TCP
+            if defaults.bool(forKey: "tcp_enabled") {
+                let tHost = defaults.string(forKey: "tcp_host") ?? ""
+                let tPortStr = defaults.string(forKey: "tcp_port") ?? ""
+                let tPort = UInt16(tPortStr) ?? 0
+                tcpSender.configure(host: tHost, port: tPort)
+                tcpSender.connect()
+                tcpSender.send(payload: payload)
+
+                if index % 60 == 0 {
+                    let msg = "TCP: sent skel #\(index)"
+                    tcpDiag = msg
+                    tcpLog.append(msg)
+                    if tcpLog.count > maxLogLines { tcpLog.removeFirst() }
+                }
             }
         }
 

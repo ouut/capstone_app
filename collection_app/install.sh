@@ -63,6 +63,11 @@ fi
 echo ""
 echo -e "${YELLOW}→${NC} 编译中（首次较慢，约 2-5 分钟）..."
 
+# 清理缓存防止签名错误
+rm -rf ~/Library/Developer/Xcode/DerivedData/collection_app-*
+# 解锁钥匙串防止 errSecInternalComponent
+security unlock-keychain ~/Library/Keychains/login.keychain-db 2>/dev/null || true
+
 BUILD_LOG=$(mktemp)
 xcodebuild \
     -project "$PROJECT_FILE" \

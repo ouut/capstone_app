@@ -22,12 +22,17 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let videoHostError = UILabel()
     private let videoPortError = UILabel()
 
+    // TCP tab
+    private let tcpHostField = UITextField()
+    private let tcpPortField = UITextField()
+    private let tcpToggle = UISwitch()
+    private let tcpHostError = UILabel()
+    private let tcpPortError = UILabel()
+
     // WebSocket tab
     private let wsURLField = UITextField()
     private let wsToggle = UISwitch()
-    private let wsVideoToggle = UISwitch()
     private let wsURLError = UILabel()
-    private let wsVideoRow = UIStackView()
     private let wsLogView = UITextView()
 
     private var wsLogLines: [String] = []
@@ -47,9 +52,11 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let kVideoHost = "udp_video_host"
     private let kVideoPort = "udp_video_port"
     private let kVideoEnabled = "udp_video_enabled"
+    private let kTCPHost = "tcp_host"
+    private let kTCPPort = "tcp_port"
+    private let kTCPEnabled = "tcp_enabled"
     private let kWSURL = "ws_url"
     private let kWSEnabled = "ws_enabled"
-    private let kWSVideo = "ws_video_enabled"
 
     // Tab containers
     private let recordingStack = UIStackView()
@@ -196,6 +203,80 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             card1Stack.trailingAnchor.constraint(equalTo: card1.trailingAnchor, constant: -16)
         ])
         recordingStack.addArrangedSubview(card1)
+
+        // ── TCP Skeletal ──
+        recordingStack.addArrangedSubview(sectionHeader("TCP SKELETAL"))
+
+        let tcpCard = cardView()
+        let tcpCardStack = UIStackView()
+        tcpCardStack.axis = .vertical
+        tcpCardStack.spacing = 0
+        tcpCardStack.translatesAutoresizingMaskIntoConstraints = false
+        tcpCard.addSubview(tcpCardStack)
+
+        tcpHostField.borderStyle = .none
+        tcpHostField.font = .systemFont(ofSize: 16)
+        tcpHostField.textAlignment = .right
+        tcpHostField.textColor = .secondaryLabel
+        tcpHostField.placeholder = "100.99.98.5"
+        tcpHostField.keyboardType = .URL
+        tcpHostField.autocapitalizationType = .none
+        tcpHostField.autocorrectionType = .no
+        tcpHostField.addTarget(self, action: #selector(tcpHostChanged), for: .editingChanged)
+        tcpHostField.addTarget(self, action: #selector(tcpHostEditingDidEnd), for: .editingDidEnd)
+        tcpCardStack.addArrangedSubview(labeledRow("IP / Hostname", tcpHostField))
+
+        tcpHostError.font = .systemFont(ofSize: 11)
+        tcpHostError.textColor = .systemRed
+        tcpHostError.isHidden = true
+        tcpCardStack.addArrangedSubview(tcpHostError)
+
+        tcpCardStack.addArrangedSubview(divider())
+
+        tcpPortField.borderStyle = .none
+        tcpPortField.font = .systemFont(ofSize: 16)
+        tcpPortField.textAlignment = .right
+        tcpPortField.textColor = .secondaryLabel
+        tcpPortField.placeholder = "9997"
+        tcpPortField.keyboardType = .numberPad
+        tcpPortField.addTarget(self, action: #selector(tcpPortChanged), for: .editingChanged)
+        tcpPortField.addTarget(self, action: #selector(tcpPortEditingDidEnd), for: .editingDidEnd)
+        tcpCardStack.addArrangedSubview(labeledRow("Port", tcpPortField))
+
+        tcpPortError.font = .systemFont(ofSize: 11)
+        tcpPortError.textColor = .systemRed
+        tcpPortError.isHidden = true
+        tcpCardStack.addArrangedSubview(tcpPortError)
+
+        tcpCardStack.addArrangedSubview(divider())
+
+        let tcpRow = UIStackView()
+        tcpRow.axis = .horizontal
+        tcpRow.spacing = 8
+        tcpRow.alignment = .center
+        tcpRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        tcpRow.isLayoutMarginsRelativeArrangement = true
+        let tcpLabel = UILabel()
+        tcpLabel.text = "Send via TCP"
+        tcpLabel.font = .systemFont(ofSize: 16)
+        tcpRow.addArrangedSubview(tcpLabel)
+        let tcpHint = UILabel()
+        tcpHint.text = "(default: off)"
+        tcpHint.font = .systemFont(ofSize: 13)
+        tcpHint.textColor = .tertiaryLabel
+        tcpRow.addArrangedSubview(tcpHint)
+        tcpRow.addArrangedSubview(UIView())
+        tcpToggle.addTarget(self, action: #selector(tcpToggled), for: .valueChanged)
+        tcpRow.addArrangedSubview(tcpToggle)
+        tcpCardStack.addArrangedSubview(tcpRow)
+
+        NSLayoutConstraint.activate([
+            tcpCardStack.topAnchor.constraint(equalTo: tcpCard.topAnchor, constant: 4),
+            tcpCardStack.bottomAnchor.constraint(equalTo: tcpCard.bottomAnchor, constant: -4),
+            tcpCardStack.leadingAnchor.constraint(equalTo: tcpCard.leadingAnchor, constant: 16),
+            tcpCardStack.trailingAnchor.constraint(equalTo: tcpCard.trailingAnchor, constant: -16)
+        ])
+        recordingStack.addArrangedSubview(tcpCard)
 
         // ── Browse Files ──
         recordingStack.addArrangedSubview(sectionHeader("RECORDED FILES"))
@@ -399,27 +480,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         wsToggle.addTarget(self, action: #selector(wsToggled), for: .valueChanged)
         card3Stack.addArrangedSubview(toggleRow("Enable WebSocket", wsToggle))
 
-        card3Stack.addArrangedSubview(divider())
-
-        let wsVideoLabel = UILabel()
-        wsVideoLabel.text = "Stream video"
-        wsVideoLabel.font = .systemFont(ofSize: 16)
-        let wsVideoHint = UILabel()
-        wsVideoHint.text = "(20 fps JPEG)"
-        wsVideoHint.font = .systemFont(ofSize: 13)
-        wsVideoHint.textColor = .tertiaryLabel
-        wsVideoRow.axis = .horizontal
-        wsVideoRow.spacing = 8
-        wsVideoRow.alignment = .center
-        wsVideoRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
-        wsVideoRow.isLayoutMarginsRelativeArrangement = true
-        wsVideoRow.addArrangedSubview(wsVideoLabel)
-        wsVideoRow.addArrangedSubview(wsVideoHint)
-        wsVideoRow.addArrangedSubview(UIView())
-        wsVideoToggle.addTarget(self, action: #selector(wsVideoToggled), for: .valueChanged)
-        wsVideoRow.addArrangedSubview(wsVideoToggle)
-        card3Stack.addArrangedSubview(wsVideoRow)
-
         NSLayoutConstraint.activate([
             card3Stack.topAnchor.constraint(equalTo: card3.topAnchor, constant: 4),
             card3Stack.bottomAnchor.constraint(equalTo: card3.bottomAnchor, constant: -4),
@@ -452,6 +512,19 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
     private func observeWS() {
         recordingManager?.$wsDiag
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] msg in
+                guard let self, !msg.isEmpty else { return }
+                let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
+                wsLogLines.append("[\(ts)] \(msg)")
+                if wsLogLines.count > maxLogLines { wsLogLines.removeFirst() }
+                wsLogView.text = wsLogLines.joined(separator: "\n")
+                let bottom = NSMakeRange(wsLogView.text.count - 1, 1)
+                wsLogView.scrollRangeToVisible(bottom)
+            }
+            .store(in: &cancellables)
+
+        recordingManager?.$tcpDiag
             .receive(on: DispatchQueue.main)
             .sink { [weak self] msg in
                 guard let self, !msg.isEmpty else { return }
@@ -554,14 +627,19 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             defaults.set(false, forKey: kVideoEnabled)
         }
 
+        tcpHostField.text = defaults.string(forKey: kTCPHost) ?? ""
+        tcpPortField.text = defaults.string(forKey: kTCPPort) ?? ""
+        tcpToggle.isOn = defaults.bool(forKey: kTCPEnabled)
+        if tcpToggle.isOn && !validateTCPHostPort(silent: true) {
+            tcpToggle.isOn = false
+            defaults.set(false, forKey: kTCPEnabled)
+        }
+
         wsURLField.text = defaults.string(forKey: kWSURL) ?? ""
         wsToggle.isOn = defaults.bool(forKey: kWSEnabled)
-        wsVideoToggle.isOn = defaults.bool(forKey: kWSVideo)
-        updateWSVideoRowState()
         if wsToggle.isOn && !validateWSURL(silent: true) {
             wsToggle.isOn = false
             defaults.set(false, forKey: kWSEnabled)
-            updateWSVideoRowState()
         }
     }
 
@@ -714,6 +792,60 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         return hostValid && portValid
     }
 
+    // MARK: - TCP settings
+
+    @objc private func tcpHostChanged() {
+        let text = tcpHostField.text ?? ""
+        defaults.set(text, forKey: kTCPHost)
+        tcpHostError.isHidden = true
+    }
+
+    @objc private func tcpHostEditingDidEnd() {
+        validateTCPHostPort(silent: false)
+    }
+
+    @objc private func tcpPortChanged() {
+        let text = tcpPortField.text ?? ""
+        defaults.set(text, forKey: kTCPPort)
+        tcpPortError.isHidden = true
+    }
+
+    @objc private func tcpPortEditingDidEnd() {
+        validateTCPHostPort(silent: false)
+    }
+
+    @objc private func tcpToggled() {
+        if tcpToggle.isOn {
+            if validateTCPHostPort(silent: false) {
+                defaults.set(true, forKey: kTCPEnabled)
+            } else {
+                tcpToggle.isOn = false
+                defaults.set(false, forKey: kTCPEnabled)
+            }
+        } else {
+            defaults.set(false, forKey: kTCPEnabled)
+            recordingManager?.tcpSender.disconnect()
+        }
+    }
+
+    @discardableResult
+    private func validateTCPHostPort(silent: Bool) -> Bool {
+        let host = tcpHostField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        let port = tcpPortField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+
+        let hostValid = isValidHost(host)
+        let portValid = isValidPort(port)
+
+        if !silent {
+            tcpHostError.text = host.isEmpty ? "Required" : (hostValid ? nil : "Invalid IP or hostname")
+            tcpHostError.isHidden = hostValid
+            tcpPortError.text = port.isEmpty ? "Required" : (portValid ? nil : "Port must be 1024\u{2013}65535")
+            tcpPortError.isHidden = portValid
+        }
+
+        return hostValid && portValid
+    }
+
     // MARK: - WebSocket settings
 
     @objc private func wsURLChanged() {
@@ -740,14 +872,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             defaults.set(false, forKey: kWSEnabled)
             recordingManager?.webSocketSender.disconnect()
         }
-        updateWSVideoRowState()
-        recordingManager?.reevaluateWSVideo()
-    }
-
-    @objc private func wsVideoToggled() {
-        defaults.set(wsVideoToggle.isOn, forKey: kWSVideo)
-        recordingManager?.webSocketSender.videoEnabled = wsVideoToggle.isOn
-        recordingManager?.reevaluateWSVideo()
     }
 
     @discardableResult
@@ -766,12 +890,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         }
         wsURLError.isHidden = true
         return true
-    }
-
-    private func updateWSVideoRowState() {
-        let enabled = wsToggle.isOn
-        wsVideoToggle.isEnabled = enabled
-        wsVideoRow.alpha = enabled ? 1.0 : 0.4
     }
 
     // MARK: - UITextFieldDelegate

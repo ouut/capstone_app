@@ -13,8 +13,6 @@ final class WebSocketSender {
     private let maxReconnectDelay: TimeInterval = 60.0
     private var lastSkelSkipped = false
     private var receiveBuffer = Data()
-    var videoEnabled = false
-
     var onStatusChange: ((String) -> Void)?
 
     deinit {
@@ -105,13 +103,6 @@ final class WebSocketSender {
         lastSkelSkipped = false
         var framed = Data([0x01])
         framed.append(payload)
-        sendFrame(framed)
-    }
-
-    func sendVideoFrame(jpegData: Data) {
-        guard videoEnabled, connection != nil, isConnected, handshakeDone else { return }
-        var framed = Data([0x02])
-        framed.append(jpegData)
         sendFrame(framed)
     }
 

@@ -41,10 +41,11 @@ final class RecordingManager: NSObject, ObservableObject {
 
     let udpSender = UDPSender()
     let udpVideoSender = UDPVideoSender()
+    let tcpSender = TCPSender()
     let webSocketSender = WebSocketSender()
-    @Published var isWSVideoActive = false
     @Published var isUDPVideoActive = false
     @Published var wsDiag = ""
+    @Published var tcpDiag = ""
 
     var onStatusChange: ((String) -> Void)?
 
@@ -53,6 +54,11 @@ final class RecordingManager: NSObject, ObservableObject {
         webSocketSender.onStatusChange = { [weak self] msg in
             DispatchQueue.main.async {
                 self?.wsDiag = msg
+            }
+        }
+        tcpSender.onStatusChange = { [weak self] msg in
+            DispatchQueue.main.async {
+                self?.tcpDiag = msg
             }
         }
     }
@@ -76,14 +82,21 @@ final class RecordingManager: NSObject, ObservableObject {
         let parts = [saveCSV ? "CSV" : nil, saveVideo ? "Video" : nil].compactMap { $0 }
         onStatusChange?("REC (\(parts.joined(separator: " + ")))")
 
-        // WebSocket
+        // WebSocket (skeletal only)
         let defaults = UserDefaults.standard
         if defaults.bool(forKey: "ws_enabled") {
             let url = defaults.string(forKey: "ws_url") ?? ""
             webSocketSender.configure(urlString: url)
             webSocketSender.connect()
-            webSocketSender.videoEnabled = defaults.bool(forKey: "ws_video_enabled")
-            reevaluateWSVideo()
+        }
+
+        // TCP (skeletal)
+        if defaults.bool(forKey: "tcp_enabled") {
+            let tHost = defaults.string(forKey: "tcp_host") ?? ""
+            let tPortStr = defaults.string(forKey: "tcp_port") ?? ""
+            let tPort = UInt16(tPortStr) ?? 0
+            tcpSender.configure(host: tHost, port: tPort)
+            tcpSender.connect()
         }
 
         // UDP Video
@@ -116,8 +129,8 @@ final class RecordingManager: NSObject, ObservableObject {
         frames.removeAll()
 
         webSocketSender.disconnect()
+        tcpSender.disconnect()
         udpVideoSender.stop()
-        isWSVideoActive = false
         isUDPVideoActive = false
 
         onStatusChange?("Saved \(frameCount) frames")
@@ -166,6 +179,11 @@ final class RecordingManager: NSObject, ObservableObject {
                            joints: joints, cameraTransform: cameraTransform)
         }
 
+        // Build skeletal payload once for all transports
+        let payload = buildJointsPayload(timestamp: t, frameIndex: UInt32(index),
+                                         subjectID: subjectID, sessionNote: sessionNote,
+                                         joints: joints, cameraTransform: cameraTransform)
+
         // WebSocket
         let wsEnabled = defaults.bool(forKey: "ws_enabled")
         if wsEnabled {
@@ -177,32 +195,30 @@ final class RecordingManager: NSObject, ObservableObject {
             let url = defaults.string(forKey: "ws_url") ?? ""
             webSocketSender.configure(urlString: url)
             webSocketSender.connect()
-            webSocketSender.videoEnabled = defaults.bool(forKey: "ws_video_enabled")
-
-            let payload = buildJointsPayload(timestamp: t, frameIndex: UInt32(index),
-                                             subjectID: subjectID, sessionNote: sessionNote,
-                                             joints: joints, cameraTransform: cameraTransform)
             webSocketSender.sendSkeletal(payload: payload)
 
-            // Periodic send confirmation
             if index % 60 == 0 {
                 wsDiag = "WS: sent skel #\(index)"
             }
-
-            reevaluateWSVideo()
         } else {
             webSocketSender.disconnect()
-            isWSVideoActive = false
+        }
+
+        // TCP
+        if defaults.bool(forKey: "tcp_enabled") {
+            let tHost = defaults.string(forKey: "tcp_host") ?? ""
+            let tPortStr = defaults.string(forKey: "tcp_port") ?? ""
+            let tPort = UInt16(tPortStr) ?? 0
+            tcpSender.configure(host: tHost, port: tPort)
+            tcpSender.connect()
+            tcpSender.send(payload: payload)
+
+            if index % 60 == 0 {
+                tcpDiag = "TCP: sent skel #\(index)"
+            }
         }
 
         index += 1
-    }
-
-    func reevaluateWSVideo() {
-        let active = isRecording
-            && UserDefaults.standard.bool(forKey: "ws_enabled")
-            && UserDefaults.standard.bool(forKey: "ws_video_enabled")
-        if active != isWSVideoActive { isWSVideoActive = active }
     }
 
     // MARK: - Binary payload builder (shared by WS and UDP)

@@ -218,10 +218,10 @@ class ViewController: UIViewController, ARSessionDelegate {
             }
         }
 
-        recordingManager.$isWSVideoActive.combineLatest(recordingManager.$isUDPVideoActive)
+        recordingManager.$isUDPVideoActive
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] ws, udp in
-                if ws || udp {
+            .sink { [weak self] active in
+                if active {
                     self?.startSnapshotTimer()
                 } else {
                     self?.stopSnapshotTimer()
@@ -255,7 +255,6 @@ class ViewController: UIViewController, ARSessionDelegate {
             guard let self, let image else { return }
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self, let jpeg = image.jpegData(compressionQuality: 0.7) else { return }
-                self.recordingManager.webSocketSender.sendVideoFrame(jpegData: jpeg)
                 if self.recordingManager.isUDPVideoActive {
                     self.recordingManager.udpVideoSender.send(jpeg: jpeg)
                 }

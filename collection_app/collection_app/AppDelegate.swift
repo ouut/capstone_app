@@ -17,7 +17,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         -> Bool {
         let defaults = UserDefaults.standard
         defaults.set(false, forKey: "ws_enabled")
-        defaults.set(false, forKey: "ws_video_enabled")
         return true
     }
 

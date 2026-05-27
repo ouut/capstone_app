@@ -25,10 +25,15 @@ class ViewController: UIViewController, ARSessionDelegate {
     private let recLabel = UILabel()
     private let settingsButton = UIButton(type: .system)
     private let statusLabel = UILabel()
+    private let wsStatusLabel = UILabel()
     private var latestCameraFrame: ARFrame?
 
     private let defaults = UserDefaults.standard
     private var cancellables = Set<AnyCancellable>()
+
+    // Snapshot
+    private var snapshotDisplayLink: CADisplayLink?
+    private var snapshotInFlight = false
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -140,6 +145,14 @@ class ViewController: UIViewController, ARSessionDelegate {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(statusLabel)
 
+        // ── WS diagnostic label ──
+        wsStatusLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        wsStatusLabel.textColor = .systemYellow
+        wsStatusLabel.textAlignment = .center
+        wsStatusLabel.numberOfLines = 2
+        wsStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(wsStatusLabel)
+
         NSLayoutConstraint.activate([
             // Record button
             recordButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
@@ -161,7 +174,12 @@ class ViewController: UIViewController, ARSessionDelegate {
             statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             statusLabel.bottomAnchor.constraint(equalTo: recLabel.topAnchor, constant: -8),
             statusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
-            statusLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 22)
+            statusLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 22),
+
+            // WS status label
+            wsStatusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            wsStatusLabel.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -4),
+            wsStatusLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 160)
         ])
     }
 
@@ -210,6 +228,53 @@ class ViewController: UIViewController, ARSessionDelegate {
                         self.statusLabel.textColor = .white
                     }
                 }
+            }
+        }
+
+        recordingManager.$isWSVideoActive
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] active in
+                if active {
+                    self?.startSnapshotTimer()
+                } else {
+                    self?.stopSnapshotTimer()
+                }
+            }
+            .store(in: &cancellables)
+
+        recordingManager.$wsDiag
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] msg in
+                self?.wsStatusLabel.text = msg.isEmpty ? "" : "  \(msg)  "
+            }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Snapshot
+
+    private func startSnapshotTimer() {
+        guard snapshotDisplayLink == nil else { return }
+        let dl = CADisplayLink(target: self, selector: #selector(captureSnapshot))
+        dl.preferredFramesPerSecond = 20
+        dl.add(to: .main, forMode: .common)
+        snapshotDisplayLink = dl
+    }
+
+    private func stopSnapshotTimer() {
+        snapshotDisplayLink?.invalidate()
+        snapshotDisplayLink = nil
+        snapshotInFlight = false
+    }
+
+    @objc private func captureSnapshot() {
+        guard !snapshotInFlight else { return }
+        snapshotInFlight = true
+        arView.snapshot(saveToHDR: false) { [weak self] image in
+            self?.snapshotInFlight = false
+            guard let self, let image else { return }
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self, let jpeg = image.jpegData(compressionQuality: 0.7) else { return }
+                self.recordingManager.webSocketSender.sendVideoFrame(jpegData: jpeg)
             }
         }
     }

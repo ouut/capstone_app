@@ -40,8 +40,20 @@ final class RecordingManager: NSObject, ObservableObject {
     private let videoQueue = DispatchQueue(label: "recording.video", qos: .userInitiated)
 
     let udpSender = UDPSender()
+    let webSocketSender = WebSocketSender()
+    @Published var isWSVideoActive = false
+    @Published var wsDiag = ""
 
     var onStatusChange: ((String) -> Void)?
+
+    override init() {
+        super.init()
+        webSocketSender.onStatusChange = { [weak self] msg in
+            DispatchQueue.main.async {
+                self?.wsDiag = msg
+            }
+        }
+    }
 
     // MARK: - Recording control
 
@@ -61,6 +73,16 @@ final class RecordingManager: NSObject, ObservableObject {
         videoOutputURL = nil
         let parts = [saveCSV ? "CSV" : nil, saveVideo ? "Video" : nil].compactMap { $0 }
         onStatusChange?("REC (\(parts.joined(separator: " + ")))")
+
+        // WebSocket
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "ws_enabled") {
+            let url = defaults.string(forKey: "ws_url") ?? ""
+            webSocketSender.configure(urlString: url)
+            webSocketSender.connect()
+            webSocketSender.videoEnabled = defaults.bool(forKey: "ws_video_enabled")
+            reevaluateWSVideo()
+        }
     }
 
     func stopRecording(saveCSV: Bool, saveVideo: Bool) {
@@ -80,6 +102,10 @@ final class RecordingManager: NSObject, ObservableObject {
 
         if saveCSV { exportCSV() }
         frames.removeAll()
+
+        webSocketSender.disconnect()
+        isWSVideoActive = false
+
         onStatusChange?("Saved \(frameCount) frames")
     }
 
@@ -110,21 +136,107 @@ final class RecordingManager: NSObject, ObservableObject {
             writeVideoFrame(pb, at: relativeTime)
         }
 
-        // UDP
+        // Shared metadata
         let defaults = UserDefaults.standard
+        let subjectID = defaults.string(forKey: "subject_id") ?? ""
+        let sessionNote = defaults.string(forKey: "session_note") ?? ""
+
+        // UDP
         if defaults.bool(forKey: "udp_enabled") {
             let host = defaults.string(forKey: "udp_host") ?? ""
             let portStr = defaults.string(forKey: "udp_port") ?? ""
             let port = UInt16(portStr) ?? 0
-            let subjectID = defaults.string(forKey: "subject_id") ?? ""
-            let sessionNote = defaults.string(forKey: "session_note") ?? ""
             udpSender.configure(host: host, port: port)
             udpSender.send(timestamp: t, frameIndex: UInt32(index),
                            subjectID: subjectID, sessionNote: sessionNote,
                            joints: joints, cameraTransform: cameraTransform)
         }
 
+        // WebSocket
+        let wsEnabled = defaults.bool(forKey: "ws_enabled")
+        if wsEnabled {
+            if defaults.bool(forKey: "udp_enabled") {
+                defaults.set(false, forKey: "udp_enabled")
+                udpSender.stop()
+            }
+
+            let url = defaults.string(forKey: "ws_url") ?? ""
+            webSocketSender.configure(urlString: url)
+            webSocketSender.connect()
+            webSocketSender.videoEnabled = defaults.bool(forKey: "ws_video_enabled")
+
+            let payload = buildJointsPayload(timestamp: t, frameIndex: UInt32(index),
+                                             subjectID: subjectID, sessionNote: sessionNote,
+                                             joints: joints, cameraTransform: cameraTransform)
+            webSocketSender.sendSkeletal(payload: payload)
+
+            // Periodic send confirmation
+            if index % 60 == 0 {
+                wsDiag = "WS: sent skel #\(index)"
+            }
+
+            reevaluateWSVideo()
+        } else {
+            webSocketSender.disconnect()
+            isWSVideoActive = false
+        }
+
         index += 1
+    }
+
+    func reevaluateWSVideo() {
+        let active = isRecording
+            && UserDefaults.standard.bool(forKey: "ws_enabled")
+            && UserDefaults.standard.bool(forKey: "ws_video_enabled")
+        if active != isWSVideoActive { isWSVideoActive = active }
+    }
+
+    // MARK: - Binary payload builder (shared by WS and UDP)
+
+    private func buildJointsPayload(timestamp: Double, frameIndex: UInt32,
+                                     subjectID: String, sessionNote: String,
+                                     joints: [(name: String, transform: simd_float4x4)],
+                                     cameraTransform: simd_float4x4) -> Data {
+        let jointCount = joints.count
+        var data = Data(count: 8 + 4 + 32 + 32 + jointCount * 28 + 28)
+        var offset = 0
+
+        var ts = timestamp
+        Swift.withUnsafeBytes(of: &ts) { data.replaceSubrange(offset..<offset+8, with: $0) }
+        offset += 8
+
+        var idx = frameIndex
+        Swift.withUnsafeBytes(of: &idx) { data.replaceSubrange(offset..<offset+4, with: $0) }
+        offset += 4
+
+        let subjectBytes = subjectID.utf8.prefix(32)
+        data.replaceSubrange(offset..<offset+subjectBytes.count, with: subjectBytes)
+        offset += 32
+
+        let sessionBytes = sessionNote.utf8.prefix(32)
+        data.replaceSubrange(offset..<offset+sessionBytes.count, with: sessionBytes)
+        offset += 32
+
+        for j in joints {
+            let cols = j.transform.columns
+            let q = simd_quatf(j.transform)
+            let vals: [Float32] = [
+                cols.3.x, cols.3.y, cols.3.z,
+                q.vector.x, q.vector.y, q.vector.z, q.vector.w
+            ]
+            vals.withUnsafeBytes { data.replaceSubrange(offset..<offset+28, with: $0) }
+            offset += 28
+        }
+
+        let camCols = cameraTransform.columns
+        let camQ = simd_quatf(cameraTransform)
+        let camVals: [Float32] = [
+            camCols.3.x, camCols.3.y, camCols.3.z,
+            camQ.vector.x, camQ.vector.y, camQ.vector.z, camQ.vector.w
+        ]
+        camVals.withUnsafeBytes { data.replaceSubrange(offset..<offset+28, with: $0) }
+
+        return data
     }
 
     // MARK: - Video writing

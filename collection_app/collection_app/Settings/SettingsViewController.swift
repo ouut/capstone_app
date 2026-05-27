@@ -13,6 +13,13 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let hostError = UILabel()
     private let portError = UILabel()
 
+    // WebSocket
+    private let wsURLField = UITextField()
+    private let wsToggle = UISwitch()
+    private let wsVideoToggle = UISwitch()
+    private let wsURLError = UILabel()
+    private let wsVideoRow = UIStackView()
+
     var recordingManager: RecordingManager?
 
     private let defaults = UserDefaults.standard
@@ -23,6 +30,9 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let kHost = "udp_host"
     private let kPort = "udp_port"
     private let kUDP = "udp_enabled"
+    private let kWSURL = "ws_url"
+    private let kWSEnabled = "ws_enabled"
+    private let kWSVideo = "ws_video_enabled"
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -195,6 +205,67 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         ])
         stack.addArrangedSubview(card2)
 
+        // ── Section: WebSocket Streaming ──
+        stack.addArrangedSubview(sectionHeader("WEBSOCKET STREAMING"))
+
+        let card3 = cardView()
+        let card3Stack = UIStackView()
+        card3Stack.axis = .vertical
+        card3Stack.spacing = 0
+        card3Stack.translatesAutoresizingMaskIntoConstraints = false
+        card3.addSubview(card3Stack)
+
+        wsURLField.borderStyle = .none
+        wsURLField.font = .systemFont(ofSize: 16)
+        wsURLField.textAlignment = .right
+        wsURLField.textColor = .secondaryLabel
+        wsURLField.placeholder = "ws://192.168.1.5:8080"
+        wsURLField.keyboardType = .URL
+        wsURLField.autocapitalizationType = .none
+        wsURLField.autocorrectionType = .no
+        wsURLField.addTarget(self, action: #selector(wsURLChanged), for: .editingChanged)
+        wsURLField.addTarget(self, action: #selector(wsURLEditingDidEnd), for: .editingDidEnd)
+        card3Stack.addArrangedSubview(labeledRow("Server URL", wsURLField))
+
+        wsURLError.font = .systemFont(ofSize: 11)
+        wsURLError.textColor = .systemRed
+        wsURLError.isHidden = true
+        card3Stack.addArrangedSubview(wsURLError)
+
+        card3Stack.addArrangedSubview(divider())
+
+        wsToggle.addTarget(self, action: #selector(wsToggled), for: .valueChanged)
+        card3Stack.addArrangedSubview(toggleRow("Enable WebSocket", wsToggle))
+
+        card3Stack.addArrangedSubview(divider())
+
+        let wsVideoLabel = UILabel()
+        wsVideoLabel.text = "Stream video"
+        wsVideoLabel.font = .systemFont(ofSize: 16)
+        let wsVideoHint = UILabel()
+        wsVideoHint.text = "(20 fps JPEG)"
+        wsVideoHint.font = .systemFont(ofSize: 13)
+        wsVideoHint.textColor = .tertiaryLabel
+        wsVideoRow.axis = .horizontal
+        wsVideoRow.spacing = 8
+        wsVideoRow.alignment = .center
+        wsVideoRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        wsVideoRow.isLayoutMarginsRelativeArrangement = true
+        wsVideoRow.addArrangedSubview(wsVideoLabel)
+        wsVideoRow.addArrangedSubview(wsVideoHint)
+        wsVideoRow.addArrangedSubview(UIView())
+        wsVideoToggle.addTarget(self, action: #selector(wsVideoToggled), for: .valueChanged)
+        wsVideoRow.addArrangedSubview(wsVideoToggle)
+        card3Stack.addArrangedSubview(wsVideoRow)
+
+        NSLayoutConstraint.activate([
+            card3Stack.topAnchor.constraint(equalTo: card3.topAnchor, constant: 4),
+            card3Stack.bottomAnchor.constraint(equalTo: card3.bottomAnchor, constant: -4),
+            card3Stack.leadingAnchor.constraint(equalTo: card3.leadingAnchor, constant: 16),
+            card3Stack.trailingAnchor.constraint(equalTo: card3.trailingAnchor, constant: -16)
+        ])
+        stack.addArrangedSubview(card3)
+
         // ── Section: Browse Files ──
         stack.addArrangedSubview(sectionHeader("RECORDED FILES"))
 
@@ -305,6 +376,17 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             udpToggle.isOn = false
             defaults.set(false, forKey: kUDP)
         }
+
+        // WebSocket
+        wsURLField.text = defaults.string(forKey: kWSURL) ?? ""
+        wsToggle.isOn = defaults.bool(forKey: kWSEnabled)
+        wsVideoToggle.isOn = defaults.bool(forKey: kWSVideo)
+        updateWSVideoRowState()
+        if wsToggle.isOn && !validateWSURL(silent: true) {
+            wsToggle.isOn = false
+            defaults.set(false, forKey: kWSEnabled)
+            updateWSVideoRowState()
+        }
     }
 
     @objc private func subjectIDChanged() {
@@ -404,6 +486,66 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     }
 
     var saveVideo: Bool { saveVideoToggle.isOn }
+
+    // MARK: - WebSocket settings
+
+    @objc private func wsURLChanged() {
+        defaults.set(wsURLField.text ?? "", forKey: kWSURL)
+        wsURLError.isHidden = true
+    }
+
+    @objc private func wsURLEditingDidEnd() {
+        validateWSURL(silent: false)
+    }
+
+    @objc private func wsToggled() {
+        if wsToggle.isOn {
+            if validateWSURL(silent: false) {
+                defaults.set(true, forKey: kWSEnabled)
+                let url = wsURLField.text ?? ""
+                recordingManager?.webSocketSender.configure(urlString: url)
+                recordingManager?.webSocketSender.connect()
+            } else {
+                wsToggle.isOn = false
+                defaults.set(false, forKey: kWSEnabled)
+            }
+        } else {
+            defaults.set(false, forKey: kWSEnabled)
+            recordingManager?.webSocketSender.disconnect()
+        }
+        updateWSVideoRowState()
+        recordingManager?.reevaluateWSVideo()
+    }
+
+    @objc private func wsVideoToggled() {
+        defaults.set(wsVideoToggle.isOn, forKey: kWSVideo)
+        recordingManager?.webSocketSender.videoEnabled = wsVideoToggle.isOn
+        recordingManager?.reevaluateWSVideo()
+    }
+
+    @discardableResult
+    private func validateWSURL(silent: Bool) -> Bool {
+        let text = wsURLField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !text.isEmpty else {
+            if !silent { wsURLError.text = "Required"; wsURLError.isHidden = false }
+            return false
+        }
+        guard let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "ws" || scheme == "wss",
+              url.host != nil, !url.host!.isEmpty else {
+            if !silent { wsURLError.text = "Must be ws:// or wss:// URL"; wsURLError.isHidden = false }
+            return false
+        }
+        wsURLError.isHidden = true
+        return true
+    }
+
+    private func updateWSVideoRowState() {
+        let enabled = wsToggle.isOn
+        wsVideoToggle.isEnabled = enabled
+        wsVideoRow.alpha = enabled ? 1.0 : 0.4
+    }
 
     // MARK: - UITextFieldDelegate
 

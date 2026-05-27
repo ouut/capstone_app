@@ -23,11 +23,15 @@ final class TCPSender {
     }
 
     func connect() {
-        guard !host.isEmpty, port > 0 else { return }
+        guard !host.isEmpty, port > 0 else {
+            onStatusChange?("TCP: missing host or port")
+            return
+        }
         guard !shouldStayConnected else { return }
         reconnectTimer?.invalidate()
         reconnectTimer = nil
         isConnected = false
+        onStatusChange?("TCP: Connecting to \(host):\(port)...")
 
         let tcp = NWProtocolTCP.Options()
         tcp.connectionTimeout = 5

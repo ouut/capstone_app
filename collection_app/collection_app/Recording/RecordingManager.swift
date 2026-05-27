@@ -44,21 +44,30 @@ final class RecordingManager: NSObject, ObservableObject {
     let tcpSender = TCPSender()
     let webSocketSender = WebSocketSender()
     @Published var isUDPVideoActive = false
+    @Published var wsLog: [String] = []
+    @Published var tcpLog: [String] = []
     @Published var wsDiag = ""
     @Published var tcpDiag = ""
 
     var onStatusChange: ((String) -> Void)?
+    private let maxLogLines = 50
 
     override init() {
         super.init()
         webSocketSender.onStatusChange = { [weak self] msg in
             DispatchQueue.main.async {
-                self?.wsDiag = msg
+                guard let self else { return }
+                self.wsDiag = msg
+                self.wsLog.append(msg)
+                if self.wsLog.count > self.maxLogLines { self.wsLog.removeFirst() }
             }
         }
         tcpSender.onStatusChange = { [weak self] msg in
             DispatchQueue.main.async {
-                self?.tcpDiag = msg
+                guard let self else { return }
+                self.tcpDiag = msg
+                self.tcpLog.append(msg)
+                if self.tcpLog.count > self.maxLogLines { self.tcpLog.removeFirst() }
             }
         }
     }
@@ -198,7 +207,10 @@ final class RecordingManager: NSObject, ObservableObject {
             webSocketSender.sendSkeletal(payload: payload)
 
             if index % 60 == 0 {
-                wsDiag = "WS: sent skel #\(index)"
+                let msg = "WS: sent skel #\(index)"
+                wsDiag = msg
+                wsLog.append(msg)
+                if wsLog.count > maxLogLines { wsLog.removeFirst() }
             }
         } else {
             webSocketSender.disconnect()
@@ -214,7 +226,10 @@ final class RecordingManager: NSObject, ObservableObject {
             tcpSender.send(payload: payload)
 
             if index % 60 == 0 {
-                tcpDiag = "TCP: sent skel #\(index)"
+                let msg = "TCP: sent skel #\(index)"
+                tcpDiag = msg
+                tcpLog.append(msg)
+                if tcpLog.count > maxLogLines { tcpLog.removeFirst() }
             }
         }
 

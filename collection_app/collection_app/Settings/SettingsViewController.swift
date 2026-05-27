@@ -549,27 +549,21 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     }
 
     private func observeWS() {
-        recordingManager?.$wsDiag
+        recordingManager?.$wsLog
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] msg in
-                guard let self, !msg.isEmpty else { return }
-                let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-                wsLogLines.append("[\(ts)] \(msg)")
-                if wsLogLines.count > maxLogLines { wsLogLines.removeFirst() }
-                wsLogView.text = wsLogLines.joined(separator: "\n")
+            .sink { [weak self] lines in
+                guard let self else { return }
+                wsLogView.text = lines.joined(separator: "\n")
                 let bottom = NSMakeRange(wsLogView.text.count - 1, 1)
                 wsLogView.scrollRangeToVisible(bottom)
             }
             .store(in: &cancellables)
 
-        recordingManager?.$tcpDiag
+        recordingManager?.$tcpLog
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] msg in
-                guard let self, !msg.isEmpty else { return }
-                let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-                tcpLogLines.append("[\(ts)] \(msg)")
-                if tcpLogLines.count > maxLogLines { tcpLogLines.removeFirst() }
-                tcpLogView.text = tcpLogLines.joined(separator: "\n")
+            .sink { [weak self] lines in
+                guard let self else { return }
+                tcpLogView.text = lines.joined(separator: "\n")
                 let bottom = NSMakeRange(tcpLogView.text.count - 1, 1)
                 tcpLogView.scrollRangeToVisible(bottom)
             }
@@ -856,6 +850,11 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         if tcpToggle.isOn {
             if validateTCPHostPort(silent: false) {
                 defaults.set(true, forKey: kTCPEnabled)
+                let host = tcpHostField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+                let portStr = tcpPortField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+                let port = UInt16(portStr) ?? 0
+                recordingManager?.tcpSender.configure(host: host, port: port)
+                recordingManager?.tcpSender.connect()
             } else {
                 tcpToggle.isOn = false
                 defaults.set(false, forKey: kTCPEnabled)

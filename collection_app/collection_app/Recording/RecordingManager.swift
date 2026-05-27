@@ -130,62 +130,65 @@ final class RecordingManager: NSObject, ObservableObject {
     // MARK: - Video writing
 
     private func writeVideoFrame(_ pixelBuffer: CVPixelBuffer, at time: TimeInterval) {
+        // Copy before dispatch: CVPixelBuffer is not Sendable, and ARFrame buffers are transient
+        guard let frameCopy = copyPixelBuffer(pixelBuffer) else { return }
+
         videoQueue.async { [weak self] in
             guard let self else { return }
 
-            // Lazy init writer on first frame
             if self.assetWriter == nil {
-                self.setupVideoWriter(with: pixelBuffer)
+                self.setupVideoWriter(with: frameCopy)
                 guard self.writerReady else { return }
             }
 
-            guard let writer = self.assetWriter, writer.status == .writing,
-                  let input = self.assetWriterInput, input.isReadyForMoreMediaData,
-                  let pool = self.adaptorPool else { return }
-
-            // Copy pixel buffer via pool (ARFrame buffer is transient)
-            var copy: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &copy)
-            guard let copy else { return }
-
-            CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
-            CVPixelBufferLockBaseAddress(copy, [])
-            defer {
-                CVPixelBufferUnlockBaseAddress(copy, [])
-                CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly)
-            }
-
-            // Copy Y plane
-            if let srcY = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0),
-               let dstY = CVPixelBufferGetBaseAddressOfPlane(copy, 0) {
-                let srcBytes = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0)
-                let dstBytes = CVPixelBufferGetBytesPerRowOfPlane(copy, 0)
-                let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0)
-                let bytesPerRow = min(srcBytes, dstBytes)
-                for row in 0..<height {
-                    let src = srcY.advanced(by: row * srcBytes)
-                    let dst = dstY.advanced(by: row * dstBytes)
-                    memcpy(dst, src, bytesPerRow)
-                }
-            }
-
-            // Copy CbCr plane
-            if let srcUV = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1),
-               let dstUV = CVPixelBufferGetBaseAddressOfPlane(copy, 1) {
-                let srcBytes = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1)
-                let dstBytes = CVPixelBufferGetBytesPerRowOfPlane(copy, 1)
-                let height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 1)
-                let bytesPerRow = min(srcBytes, dstBytes)
-                for row in 0..<height {
-                    let src = srcUV.advanced(by: row * srcBytes)
-                    let dst = dstUV.advanced(by: row * dstBytes)
-                    memcpy(dst, src, bytesPerRow)
-                }
-            }
+            guard self.assetWriter?.status == .writing,
+                  self.assetWriterInput?.isReadyForMoreMediaData == true,
+                  let adaptor = self.pixelBufferAdaptor else { return }
 
             let pts = CMTime(seconds: time, preferredTimescale: 1_000_000)
-            self.pixelBufferAdaptor?.append(copy, withPresentationTime: pts)
+            adaptor.append(frameCopy, withPresentationTime: pts)
         }
+    }
+
+    private func copyPixelBuffer(_ src: CVPixelBuffer) -> CVPixelBuffer? {
+        let width = CVPixelBufferGetWidth(src)
+        let height = CVPixelBufferGetHeight(src)
+        let format = CVPixelBufferGetPixelFormatType(src)
+
+        let attrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: format,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+        var copy: CVPixelBuffer?
+        CVPixelBufferCreate(nil, width, height, format, attrs as CFDictionary, &copy)
+        guard let copy else { return nil }
+
+        CVPixelBufferLockBaseAddress(src, .readOnly)
+        CVPixelBufferLockBaseAddress(copy, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(copy, [])
+            CVPixelBufferUnlockBaseAddress(src, .readOnly)
+        }
+
+        func copyPlane(_ plane: Int) {
+            guard let srcAddr = CVPixelBufferGetBaseAddressOfPlane(src, plane),
+                  let dstAddr = CVPixelBufferGetBaseAddressOfPlane(copy, plane) else { return }
+            let srcBytes = CVPixelBufferGetBytesPerRowOfPlane(src, plane)
+            let dstBytes = CVPixelBufferGetBytesPerRowOfPlane(copy, plane)
+            let h = CVPixelBufferGetHeightOfPlane(src, plane)
+            let bytesPerRow = min(srcBytes, dstBytes)
+            for row in 0..<h {
+                memcpy(dstAddr.advanced(by: row * dstBytes),
+                       srcAddr.advanced(by: row * srcBytes),
+                       bytesPerRow)
+            }
+        }
+
+        copyPlane(0)
+        copyPlane(1)
+        return copy
     }
 
     private func setupVideoWriter(with sample: CVPixelBuffer) {

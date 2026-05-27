@@ -15,6 +15,13 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let hostError = UILabel()
     private let portError = UILabel()
 
+    // UDP Video
+    private let videoHostField = UITextField()
+    private let videoPortField = UITextField()
+    private let udpVideoToggle = UISwitch()
+    private let videoHostError = UILabel()
+    private let videoPortError = UILabel()
+
     // WebSocket tab
     private let wsURLField = UITextField()
     private let wsToggle = UISwitch()
@@ -37,6 +44,9 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let kHost = "udp_host"
     private let kPort = "udp_port"
     private let kUDP = "udp_enabled"
+    private let kVideoHost = "udp_video_host"
+    private let kVideoPort = "udp_video_port"
+    private let kVideoEnabled = "udp_video_enabled"
     private let kWSURL = "ws_url"
     private let kWSEnabled = "ws_enabled"
     private let kWSVideo = "ws_video_enabled"
@@ -252,6 +262,80 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         ])
         recordingStack.addArrangedSubview(card2)
 
+        // ── UDP Video ──
+        recordingStack.addArrangedSubview(sectionHeader("UDP VIDEO (20 FPS JPEG)"))
+
+        let card4 = cardView()
+        let card4Stack = UIStackView()
+        card4Stack.axis = .vertical
+        card4Stack.spacing = 0
+        card4Stack.translatesAutoresizingMaskIntoConstraints = false
+        card4.addSubview(card4Stack)
+
+        videoHostField.borderStyle = .none
+        videoHostField.font = .systemFont(ofSize: 16)
+        videoHostField.textAlignment = .right
+        videoHostField.textColor = .secondaryLabel
+        videoHostField.placeholder = "100.99.98.5"
+        videoHostField.keyboardType = .URL
+        videoHostField.autocapitalizationType = .none
+        videoHostField.autocorrectionType = .no
+        videoHostField.addTarget(self, action: #selector(videoHostChanged), for: .editingChanged)
+        videoHostField.addTarget(self, action: #selector(videoHostEditingDidEnd), for: .editingDidEnd)
+        card4Stack.addArrangedSubview(labeledRow("IP / Hostname", videoHostField))
+
+        videoHostError.font = .systemFont(ofSize: 11)
+        videoHostError.textColor = .systemRed
+        videoHostError.isHidden = true
+        card4Stack.addArrangedSubview(videoHostError)
+
+        card4Stack.addArrangedSubview(divider())
+
+        videoPortField.borderStyle = .none
+        videoPortField.font = .systemFont(ofSize: 16)
+        videoPortField.textAlignment = .right
+        videoPortField.textColor = .secondaryLabel
+        videoPortField.placeholder = "9998"
+        videoPortField.keyboardType = .numberPad
+        videoPortField.addTarget(self, action: #selector(videoPortChanged), for: .editingChanged)
+        videoPortField.addTarget(self, action: #selector(videoPortEditingDidEnd), for: .editingDidEnd)
+        card4Stack.addArrangedSubview(labeledRow("Port", videoPortField))
+
+        videoPortError.font = .systemFont(ofSize: 11)
+        videoPortError.textColor = .systemRed
+        videoPortError.isHidden = true
+        card4Stack.addArrangedSubview(videoPortError)
+
+        card4Stack.addArrangedSubview(divider())
+
+        let videoUDPRow = UIStackView()
+        videoUDPRow.axis = .horizontal
+        videoUDPRow.spacing = 8
+        videoUDPRow.alignment = .center
+        videoUDPRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        videoUDPRow.isLayoutMarginsRelativeArrangement = true
+        let videoUDPLabel = UILabel()
+        videoUDPLabel.text = "Send video via UDP"
+        videoUDPLabel.font = .systemFont(ofSize: 16)
+        videoUDPRow.addArrangedSubview(videoUDPLabel)
+        let videoUDPHint = UILabel()
+        videoUDPHint.text = "(default: off)"
+        videoUDPHint.font = .systemFont(ofSize: 13)
+        videoUDPHint.textColor = .tertiaryLabel
+        videoUDPRow.addArrangedSubview(videoUDPHint)
+        videoUDPRow.addArrangedSubview(UIView())
+        udpVideoToggle.addTarget(self, action: #selector(udpVideoToggled), for: .valueChanged)
+        videoUDPRow.addArrangedSubview(udpVideoToggle)
+        card4Stack.addArrangedSubview(videoUDPRow)
+
+        NSLayoutConstraint.activate([
+            card4Stack.topAnchor.constraint(equalTo: card4.topAnchor, constant: 4),
+            card4Stack.bottomAnchor.constraint(equalTo: card4.bottomAnchor, constant: -4),
+            card4Stack.leadingAnchor.constraint(equalTo: card4.leadingAnchor, constant: 16),
+            card4Stack.trailingAnchor.constraint(equalTo: card4.trailingAnchor, constant: -16)
+        ])
+        recordingStack.addArrangedSubview(card4)
+
         // ── Browse Files ──
         recordingStack.addArrangedSubview(sectionHeader("RECORDED FILES"))
 
@@ -449,6 +533,14 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             defaults.set(false, forKey: kUDP)
         }
 
+        videoHostField.text = defaults.string(forKey: kVideoHost) ?? ""
+        videoPortField.text = defaults.string(forKey: kVideoPort) ?? ""
+        udpVideoToggle.isOn = defaults.bool(forKey: kVideoEnabled)
+        if udpVideoToggle.isOn && !validateVideoHostPort(silent: true) {
+            udpVideoToggle.isOn = false
+            defaults.set(false, forKey: kVideoEnabled)
+        }
+
         wsURLField.text = defaults.string(forKey: kWSURL) ?? ""
         wsToggle.isOn = defaults.bool(forKey: kWSEnabled)
         wsVideoToggle.isOn = defaults.bool(forKey: kWSVideo)
@@ -554,6 +646,60 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     }
 
     var saveVideo: Bool { saveVideoToggle.isOn }
+
+    // MARK: - UDP Video settings
+
+    @objc private func videoHostChanged() {
+        let text = videoHostField.text ?? ""
+        defaults.set(text, forKey: kVideoHost)
+        videoHostError.isHidden = true
+    }
+
+    @objc private func videoHostEditingDidEnd() {
+        validateVideoHostPort(silent: false)
+    }
+
+    @objc private func videoPortChanged() {
+        let text = videoPortField.text ?? ""
+        defaults.set(text, forKey: kVideoPort)
+        videoPortError.isHidden = true
+    }
+
+    @objc private func videoPortEditingDidEnd() {
+        validateVideoHostPort(silent: false)
+    }
+
+    @objc private func udpVideoToggled() {
+        if udpVideoToggle.isOn {
+            if validateVideoHostPort(silent: false) {
+                defaults.set(true, forKey: kVideoEnabled)
+            } else {
+                udpVideoToggle.isOn = false
+                defaults.set(false, forKey: kVideoEnabled)
+            }
+        } else {
+            defaults.set(false, forKey: kVideoEnabled)
+            recordingManager?.udpVideoSender.stop()
+        }
+    }
+
+    @discardableResult
+    private func validateVideoHostPort(silent: Bool) -> Bool {
+        let host = videoHostField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+        let port = videoPortField.text?.trimmingCharacters(in: .whitespaces) ?? ""
+
+        let hostValid = isValidHost(host)
+        let portValid = isValidPort(port)
+
+        if !silent {
+            videoHostError.text = host.isEmpty ? "Required" : (hostValid ? nil : "Invalid IP or hostname")
+            videoHostError.isHidden = hostValid
+            videoPortError.text = port.isEmpty ? "Required" : (portValid ? nil : "Port must be 1024\u{2013}65535")
+            videoPortError.isHidden = portValid
+        }
+
+        return hostValid && portValid
+    }
 
     // MARK: - WebSocket settings
 

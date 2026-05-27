@@ -40,8 +40,10 @@ final class RecordingManager: NSObject, ObservableObject {
     private let videoQueue = DispatchQueue(label: "recording.video", qos: .userInitiated)
 
     let udpSender = UDPSender()
+    let udpVideoSender = UDPVideoSender()
     let webSocketSender = WebSocketSender()
     @Published var isWSVideoActive = false
+    @Published var isUDPVideoActive = false
     @Published var wsDiag = ""
 
     var onStatusChange: ((String) -> Void)?
@@ -83,6 +85,16 @@ final class RecordingManager: NSObject, ObservableObject {
             webSocketSender.videoEnabled = defaults.bool(forKey: "ws_video_enabled")
             reevaluateWSVideo()
         }
+
+        // UDP Video
+        if defaults.bool(forKey: "udp_video_enabled") {
+            let vHost = defaults.string(forKey: "udp_video_host") ?? ""
+            let vPortStr = defaults.string(forKey: "udp_video_port") ?? ""
+            let vPort = UInt16(vPortStr) ?? 0
+            udpVideoSender.configure(host: vHost, port: vPort)
+            udpVideoSender.start()
+            isUDPVideoActive = true
+        }
     }
 
     func stopRecording(saveCSV: Bool, saveVideo: Bool) {
@@ -104,7 +116,9 @@ final class RecordingManager: NSObject, ObservableObject {
         frames.removeAll()
 
         webSocketSender.disconnect()
+        udpVideoSender.stop()
         isWSVideoActive = false
+        isUDPVideoActive = false
 
         onStatusChange?("Saved \(frameCount) frames")
     }

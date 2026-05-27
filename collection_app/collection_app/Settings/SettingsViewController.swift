@@ -29,13 +29,17 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let tcpHostError = UILabel()
     private let tcpPortError = UILabel()
 
+    // TCP tab
+    private let tcpLogView = UITextView()
+    private var tcpLogLines: [String] = []
+
     // WebSocket tab
     private let wsURLField = UITextField()
     private let wsToggle = UISwitch()
     private let wsURLError = UILabel()
     private let wsLogView = UITextView()
-
     private var wsLogLines: [String] = []
+
     private let maxLogLines = 50
 
     var recordingManager: RecordingManager?
@@ -61,6 +65,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     // Tab containers
     private let recordingStack = UIStackView()
     private let udpStack = UIStackView()
+    private let tcpStack = UIStackView()
     private let wsStack = UIStackView()
 
     override func viewDidLoad() {
@@ -89,7 +94,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         scroll.addSubview(rootStack)
 
         // ── Segmented control ──
-        let seg = UISegmentedControl(items: ["Recording", "UDP", "WebSocket"])
+        let seg = UISegmentedControl(items: ["Rec", "UDP", "TCP", "WS"])
         seg.selectedSegmentIndex = 0
         seg.addTarget(self, action: #selector(tabChanged(_:)), for: .valueChanged)
         rootStack.addArrangedSubview(seg)
@@ -106,6 +111,13 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         udpStack.isHidden = true
         buildUDPTab()
         rootStack.addArrangedSubview(udpStack)
+
+        // ── TCP tab content ──
+        tcpStack.axis = .vertical
+        tcpStack.spacing = 24
+        tcpStack.isHidden = true
+        buildTCPTab()
+        rootStack.addArrangedSubview(tcpStack)
 
         // ── WebSocket tab content ──
         wsStack.axis = .vertical
@@ -132,7 +144,8 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     @objc private func tabChanged(_ seg: UISegmentedControl) {
         recordingStack.isHidden = seg.selectedSegmentIndex != 0
         udpStack.isHidden = seg.selectedSegmentIndex != 1
-        wsStack.isHidden = seg.selectedSegmentIndex != 2
+        tcpStack.isHidden = seg.selectedSegmentIndex != 2
+        wsStack.isHidden = seg.selectedSegmentIndex != 3
     }
 
     // MARK: - Recording tab
@@ -203,80 +216,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             card1Stack.trailingAnchor.constraint(equalTo: card1.trailingAnchor, constant: -16)
         ])
         recordingStack.addArrangedSubview(card1)
-
-        // ── TCP Skeletal ──
-        recordingStack.addArrangedSubview(sectionHeader("TCP SKELETAL"))
-
-        let tcpCard = cardView()
-        let tcpCardStack = UIStackView()
-        tcpCardStack.axis = .vertical
-        tcpCardStack.spacing = 0
-        tcpCardStack.translatesAutoresizingMaskIntoConstraints = false
-        tcpCard.addSubview(tcpCardStack)
-
-        tcpHostField.borderStyle = .none
-        tcpHostField.font = .systemFont(ofSize: 16)
-        tcpHostField.textAlignment = .right
-        tcpHostField.textColor = .secondaryLabel
-        tcpHostField.placeholder = "100.99.98.5"
-        tcpHostField.keyboardType = .URL
-        tcpHostField.autocapitalizationType = .none
-        tcpHostField.autocorrectionType = .no
-        tcpHostField.addTarget(self, action: #selector(tcpHostChanged), for: .editingChanged)
-        tcpHostField.addTarget(self, action: #selector(tcpHostEditingDidEnd), for: .editingDidEnd)
-        tcpCardStack.addArrangedSubview(labeledRow("IP / Hostname", tcpHostField))
-
-        tcpHostError.font = .systemFont(ofSize: 11)
-        tcpHostError.textColor = .systemRed
-        tcpHostError.isHidden = true
-        tcpCardStack.addArrangedSubview(tcpHostError)
-
-        tcpCardStack.addArrangedSubview(divider())
-
-        tcpPortField.borderStyle = .none
-        tcpPortField.font = .systemFont(ofSize: 16)
-        tcpPortField.textAlignment = .right
-        tcpPortField.textColor = .secondaryLabel
-        tcpPortField.placeholder = "9997"
-        tcpPortField.keyboardType = .numberPad
-        tcpPortField.addTarget(self, action: #selector(tcpPortChanged), for: .editingChanged)
-        tcpPortField.addTarget(self, action: #selector(tcpPortEditingDidEnd), for: .editingDidEnd)
-        tcpCardStack.addArrangedSubview(labeledRow("Port", tcpPortField))
-
-        tcpPortError.font = .systemFont(ofSize: 11)
-        tcpPortError.textColor = .systemRed
-        tcpPortError.isHidden = true
-        tcpCardStack.addArrangedSubview(tcpPortError)
-
-        tcpCardStack.addArrangedSubview(divider())
-
-        let tcpRow = UIStackView()
-        tcpRow.axis = .horizontal
-        tcpRow.spacing = 8
-        tcpRow.alignment = .center
-        tcpRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
-        tcpRow.isLayoutMarginsRelativeArrangement = true
-        let tcpLabel = UILabel()
-        tcpLabel.text = "Send via TCP"
-        tcpLabel.font = .systemFont(ofSize: 16)
-        tcpRow.addArrangedSubview(tcpLabel)
-        let tcpHint = UILabel()
-        tcpHint.text = "(default: off)"
-        tcpHint.font = .systemFont(ofSize: 13)
-        tcpHint.textColor = .tertiaryLabel
-        tcpRow.addArrangedSubview(tcpHint)
-        tcpRow.addArrangedSubview(UIView())
-        tcpToggle.addTarget(self, action: #selector(tcpToggled), for: .valueChanged)
-        tcpRow.addArrangedSubview(tcpToggle)
-        tcpCardStack.addArrangedSubview(tcpRow)
-
-        NSLayoutConstraint.activate([
-            tcpCardStack.topAnchor.constraint(equalTo: tcpCard.topAnchor, constant: 4),
-            tcpCardStack.bottomAnchor.constraint(equalTo: tcpCard.bottomAnchor, constant: -4),
-            tcpCardStack.leadingAnchor.constraint(equalTo: tcpCard.leadingAnchor, constant: 16),
-            tcpCardStack.trailingAnchor.constraint(equalTo: tcpCard.trailingAnchor, constant: -16)
-        ])
-        recordingStack.addArrangedSubview(tcpCard)
 
         // ── Browse Files ──
         recordingStack.addArrangedSubview(sectionHeader("RECORDED FILES"))
@@ -445,6 +384,105 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         udpStack.addArrangedSubview(card2)
     }
 
+    // MARK: - TCP tab
+
+    private func buildTCPTab() {
+        // ── TCP Config ──
+        tcpStack.addArrangedSubview(sectionHeader("CONNECTION"))
+
+        let card = cardView()
+        let cardStack = UIStackView()
+        cardStack.axis = .vertical
+        cardStack.spacing = 0
+        cardStack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(cardStack)
+
+        tcpHostField.borderStyle = .none
+        tcpHostField.font = .systemFont(ofSize: 16)
+        tcpHostField.textAlignment = .right
+        tcpHostField.textColor = .secondaryLabel
+        tcpHostField.placeholder = "100.99.98.5"
+        tcpHostField.keyboardType = .URL
+        tcpHostField.autocapitalizationType = .none
+        tcpHostField.autocorrectionType = .no
+        tcpHostField.addTarget(self, action: #selector(tcpHostChanged), for: .editingChanged)
+        tcpHostField.addTarget(self, action: #selector(tcpHostEditingDidEnd), for: .editingDidEnd)
+        cardStack.addArrangedSubview(labeledRow("IP / Hostname", tcpHostField))
+
+        tcpHostError.font = .systemFont(ofSize: 11)
+        tcpHostError.textColor = .systemRed
+        tcpHostError.isHidden = true
+        cardStack.addArrangedSubview(tcpHostError)
+
+        cardStack.addArrangedSubview(divider())
+
+        tcpPortField.borderStyle = .none
+        tcpPortField.font = .systemFont(ofSize: 16)
+        tcpPortField.textAlignment = .right
+        tcpPortField.textColor = .secondaryLabel
+        tcpPortField.placeholder = "9997"
+        tcpPortField.keyboardType = .numberPad
+        tcpPortField.addTarget(self, action: #selector(tcpPortChanged), for: .editingChanged)
+        tcpPortField.addTarget(self, action: #selector(tcpPortEditingDidEnd), for: .editingDidEnd)
+        cardStack.addArrangedSubview(labeledRow("Port", tcpPortField))
+
+        tcpPortError.font = .systemFont(ofSize: 11)
+        tcpPortError.textColor = .systemRed
+        tcpPortError.isHidden = true
+        cardStack.addArrangedSubview(tcpPortError)
+
+        cardStack.addArrangedSubview(divider())
+
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 8
+        row.alignment = .center
+        row.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        row.isLayoutMarginsRelativeArrangement = true
+        let label = UILabel()
+        label.text = "Send skeletal via TCP"
+        label.font = .systemFont(ofSize: 16)
+        row.addArrangedSubview(label)
+        let hint = UILabel()
+        hint.text = "(default: off)"
+        hint.font = .systemFont(ofSize: 13)
+        hint.textColor = .tertiaryLabel
+        row.addArrangedSubview(hint)
+        row.addArrangedSubview(UIView())
+        tcpToggle.addTarget(self, action: #selector(tcpToggled), for: .valueChanged)
+        row.addArrangedSubview(tcpToggle)
+        cardStack.addArrangedSubview(row)
+
+        NSLayoutConstraint.activate([
+            cardStack.topAnchor.constraint(equalTo: card.topAnchor, constant: 4),
+            cardStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -4),
+            cardStack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
+            cardStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16)
+        ])
+        tcpStack.addArrangedSubview(card)
+
+        // ── TCP Log ──
+        tcpStack.addArrangedSubview(sectionHeader("LOG"))
+
+        let logCard = cardView()
+        tcpLogView.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        tcpLogView.textColor = .label
+        tcpLogView.backgroundColor = .systemBackground
+        tcpLogView.isEditable = false
+        tcpLogView.isScrollEnabled = true
+        tcpLogView.translatesAutoresizingMaskIntoConstraints = false
+        logCard.addSubview(tcpLogView)
+
+        NSLayoutConstraint.activate([
+            tcpLogView.topAnchor.constraint(equalTo: logCard.topAnchor, constant: 8),
+            tcpLogView.bottomAnchor.constraint(equalTo: logCard.bottomAnchor, constant: -8),
+            tcpLogView.leadingAnchor.constraint(equalTo: logCard.leadingAnchor, constant: 12),
+            tcpLogView.trailingAnchor.constraint(equalTo: logCard.trailingAnchor, constant: -12),
+            tcpLogView.heightAnchor.constraint(equalToConstant: 200)
+        ])
+        tcpStack.addArrangedSubview(logCard)
+    }
+
     // MARK: - WebSocket tab
 
     private func buildWebSocketTab() {
@@ -529,11 +567,11 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
             .sink { [weak self] msg in
                 guard let self, !msg.isEmpty else { return }
                 let ts = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
-                wsLogLines.append("[\(ts)] \(msg)")
-                if wsLogLines.count > maxLogLines { wsLogLines.removeFirst() }
-                wsLogView.text = wsLogLines.joined(separator: "\n")
-                let bottom = NSMakeRange(wsLogView.text.count - 1, 1)
-                wsLogView.scrollRangeToVisible(bottom)
+                tcpLogLines.append("[\(ts)] \(msg)")
+                if tcpLogLines.count > maxLogLines { tcpLogLines.removeFirst() }
+                tcpLogView.text = tcpLogLines.joined(separator: "\n")
+                let bottom = NSMakeRange(tcpLogView.text.count - 1, 1)
+                tcpLogView.scrollRangeToVisible(bottom)
             }
             .store(in: &cancellables)
     }

@@ -51,6 +51,7 @@
     {
       "idiom" : "ipad",
       "size" : "20x20",
+      "filename" : "AR_icon_3D_20.png",
       "scale" : "1x"
     },
     {
@@ -62,6 +63,7 @@
     {
       "idiom" : "ipad",
       "size" : "29x29",
+      "filename" : "AR_icon_3D_29.png",
       "scale" : "1x"
     },
     {

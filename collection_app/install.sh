@@ -76,6 +76,7 @@ xcodebuild \
     -configuration Debug \
     -destination "$DEST" \
     DEVELOPMENT_TEAM="$TEAM_ID" \
+    ENABLE_DEBUG_DYLIB=NO \
     -allowProvisioningUpdates \
     build 2>&1 | tee "$BUILD_LOG"
 

@@ -53,6 +53,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
     // Tab containers
     private let recordingStack = UIStackView()
+    private let udpStack = UIStackView()
     private let wsStack = UIStackView()
 
     override func viewDidLoad() {
@@ -81,7 +82,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         scroll.addSubview(rootStack)
 
         // ── Segmented control ──
-        let seg = UISegmentedControl(items: ["Recording", "WebSocket"])
+        let seg = UISegmentedControl(items: ["Recording", "UDP", "WebSocket"])
         seg.selectedSegmentIndex = 0
         seg.addTarget(self, action: #selector(tabChanged(_:)), for: .valueChanged)
         rootStack.addArrangedSubview(seg)
@@ -91,6 +92,13 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         recordingStack.spacing = 24
         buildRecordingTab()
         rootStack.addArrangedSubview(recordingStack)
+
+        // ── UDP tab content ──
+        udpStack.axis = .vertical
+        udpStack.spacing = 24
+        udpStack.isHidden = true
+        buildUDPTab()
+        rootStack.addArrangedSubview(udpStack)
 
         // ── WebSocket tab content ──
         wsStack.axis = .vertical
@@ -116,7 +124,8 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
     @objc private func tabChanged(_ seg: UISegmentedControl) {
         recordingStack.isHidden = seg.selectedSegmentIndex != 0
-        wsStack.isHidden = seg.selectedSegmentIndex != 1
+        udpStack.isHidden = seg.selectedSegmentIndex != 1
+        wsStack.isHidden = seg.selectedSegmentIndex != 2
     }
 
     // MARK: - Recording tab
@@ -188,154 +197,6 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         ])
         recordingStack.addArrangedSubview(card1)
 
-        // ── UDP Streaming ──
-        recordingStack.addArrangedSubview(sectionHeader("UDP STREAMING"))
-
-        let card2 = cardView()
-        let card2Stack = UIStackView()
-        card2Stack.axis = .vertical
-        card2Stack.spacing = 0
-        card2Stack.translatesAutoresizingMaskIntoConstraints = false
-        card2.addSubview(card2Stack)
-
-        hostField.borderStyle = .none
-        hostField.font = .systemFont(ofSize: 16)
-        hostField.textAlignment = .right
-        hostField.textColor = .secondaryLabel
-        hostField.placeholder = "100.99.98.5"
-        hostField.keyboardType = .URL
-        hostField.autocapitalizationType = .none
-        hostField.autocorrectionType = .no
-        hostField.addTarget(self, action: #selector(hostChanged), for: .editingChanged)
-        hostField.addTarget(self, action: #selector(hostEditingDidEnd), for: .editingDidEnd)
-        card2Stack.addArrangedSubview(labeledRow("IP / Hostname", hostField))
-
-        hostError.font = .systemFont(ofSize: 11)
-        hostError.textColor = .systemRed
-        hostError.isHidden = true
-        card2Stack.addArrangedSubview(hostError)
-
-        card2Stack.addArrangedSubview(divider())
-
-        portField.borderStyle = .none
-        portField.font = .systemFont(ofSize: 16)
-        portField.textAlignment = .right
-        portField.textColor = .secondaryLabel
-        portField.placeholder = "9999"
-        portField.keyboardType = .numberPad
-        portField.addTarget(self, action: #selector(portChanged), for: .editingChanged)
-        portField.addTarget(self, action: #selector(portEditingDidEnd), for: .editingDidEnd)
-        card2Stack.addArrangedSubview(labeledRow("Port", portField))
-
-        portError.font = .systemFont(ofSize: 11)
-        portError.textColor = .systemRed
-        portError.isHidden = true
-        card2Stack.addArrangedSubview(portError)
-
-        card2Stack.addArrangedSubview(divider())
-
-        let udpRow = UIStackView()
-        udpRow.axis = .horizontal
-        udpRow.spacing = 8
-        udpRow.alignment = .center
-        udpRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
-        udpRow.isLayoutMarginsRelativeArrangement = true
-        let udpLabel = UILabel()
-        udpLabel.text = "Send via UDP"
-        udpLabel.font = .systemFont(ofSize: 16)
-        udpRow.addArrangedSubview(udpLabel)
-        let udpHint = UILabel()
-        udpHint.text = "(default: off)"
-        udpHint.font = .systemFont(ofSize: 13)
-        udpHint.textColor = .tertiaryLabel
-        udpRow.addArrangedSubview(udpHint)
-        udpRow.addArrangedSubview(UIView())
-        udpToggle.addTarget(self, action: #selector(udpToggled), for: .valueChanged)
-        udpRow.addArrangedSubview(udpToggle)
-        card2Stack.addArrangedSubview(udpRow)
-
-        NSLayoutConstraint.activate([
-            card2Stack.topAnchor.constraint(equalTo: card2.topAnchor, constant: 4),
-            card2Stack.bottomAnchor.constraint(equalTo: card2.bottomAnchor, constant: -4),
-            card2Stack.leadingAnchor.constraint(equalTo: card2.leadingAnchor, constant: 16),
-            card2Stack.trailingAnchor.constraint(equalTo: card2.trailingAnchor, constant: -16)
-        ])
-        recordingStack.addArrangedSubview(card2)
-
-        // ── UDP Video ──
-        recordingStack.addArrangedSubview(sectionHeader("UDP VIDEO (20 FPS JPEG)"))
-
-        let card4 = cardView()
-        let card4Stack = UIStackView()
-        card4Stack.axis = .vertical
-        card4Stack.spacing = 0
-        card4Stack.translatesAutoresizingMaskIntoConstraints = false
-        card4.addSubview(card4Stack)
-
-        videoHostField.borderStyle = .none
-        videoHostField.font = .systemFont(ofSize: 16)
-        videoHostField.textAlignment = .right
-        videoHostField.textColor = .secondaryLabel
-        videoHostField.placeholder = "100.99.98.5"
-        videoHostField.keyboardType = .URL
-        videoHostField.autocapitalizationType = .none
-        videoHostField.autocorrectionType = .no
-        videoHostField.addTarget(self, action: #selector(videoHostChanged), for: .editingChanged)
-        videoHostField.addTarget(self, action: #selector(videoHostEditingDidEnd), for: .editingDidEnd)
-        card4Stack.addArrangedSubview(labeledRow("IP / Hostname", videoHostField))
-
-        videoHostError.font = .systemFont(ofSize: 11)
-        videoHostError.textColor = .systemRed
-        videoHostError.isHidden = true
-        card4Stack.addArrangedSubview(videoHostError)
-
-        card4Stack.addArrangedSubview(divider())
-
-        videoPortField.borderStyle = .none
-        videoPortField.font = .systemFont(ofSize: 16)
-        videoPortField.textAlignment = .right
-        videoPortField.textColor = .secondaryLabel
-        videoPortField.placeholder = "9998"
-        videoPortField.keyboardType = .numberPad
-        videoPortField.addTarget(self, action: #selector(videoPortChanged), for: .editingChanged)
-        videoPortField.addTarget(self, action: #selector(videoPortEditingDidEnd), for: .editingDidEnd)
-        card4Stack.addArrangedSubview(labeledRow("Port", videoPortField))
-
-        videoPortError.font = .systemFont(ofSize: 11)
-        videoPortError.textColor = .systemRed
-        videoPortError.isHidden = true
-        card4Stack.addArrangedSubview(videoPortError)
-
-        card4Stack.addArrangedSubview(divider())
-
-        let videoUDPRow = UIStackView()
-        videoUDPRow.axis = .horizontal
-        videoUDPRow.spacing = 8
-        videoUDPRow.alignment = .center
-        videoUDPRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
-        videoUDPRow.isLayoutMarginsRelativeArrangement = true
-        let videoUDPLabel = UILabel()
-        videoUDPLabel.text = "Send video via UDP"
-        videoUDPLabel.font = .systemFont(ofSize: 16)
-        videoUDPRow.addArrangedSubview(videoUDPLabel)
-        let videoUDPHint = UILabel()
-        videoUDPHint.text = "(default: off)"
-        videoUDPHint.font = .systemFont(ofSize: 13)
-        videoUDPHint.textColor = .tertiaryLabel
-        videoUDPRow.addArrangedSubview(videoUDPHint)
-        videoUDPRow.addArrangedSubview(UIView())
-        udpVideoToggle.addTarget(self, action: #selector(udpVideoToggled), for: .valueChanged)
-        videoUDPRow.addArrangedSubview(udpVideoToggle)
-        card4Stack.addArrangedSubview(videoUDPRow)
-
-        NSLayoutConstraint.activate([
-            card4Stack.topAnchor.constraint(equalTo: card4.topAnchor, constant: 4),
-            card4Stack.bottomAnchor.constraint(equalTo: card4.bottomAnchor, constant: -4),
-            card4Stack.leadingAnchor.constraint(equalTo: card4.leadingAnchor, constant: 16),
-            card4Stack.trailingAnchor.constraint(equalTo: card4.trailingAnchor, constant: -16)
-        ])
-        recordingStack.addArrangedSubview(card4)
-
         // ── Browse Files ──
         recordingStack.addArrangedSubview(sectionHeader("RECORDED FILES"))
 
@@ -349,6 +210,158 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         browseBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
         browseBtn.addTarget(self, action: #selector(browseFiles), for: .touchUpInside)
         recordingStack.addArrangedSubview(browseBtn)
+    }
+
+    // MARK: - UDP tab
+
+    private func buildUDPTab() {
+        // ── Skeletal UDP ──
+        udpStack.addArrangedSubview(sectionHeader("SKELETAL DATA"))
+
+        let card1 = cardView()
+        let card1Stack = UIStackView()
+        card1Stack.axis = .vertical
+        card1Stack.spacing = 0
+        card1Stack.translatesAutoresizingMaskIntoConstraints = false
+        card1.addSubview(card1Stack)
+
+        hostField.borderStyle = .none
+        hostField.font = .systemFont(ofSize: 16)
+        hostField.textAlignment = .right
+        hostField.textColor = .secondaryLabel
+        hostField.placeholder = "100.99.98.5"
+        hostField.keyboardType = .URL
+        hostField.autocapitalizationType = .none
+        hostField.autocorrectionType = .no
+        hostField.addTarget(self, action: #selector(hostChanged), for: .editingChanged)
+        hostField.addTarget(self, action: #selector(hostEditingDidEnd), for: .editingDidEnd)
+        card1Stack.addArrangedSubview(labeledRow("IP / Hostname", hostField))
+
+        hostError.font = .systemFont(ofSize: 11)
+        hostError.textColor = .systemRed
+        hostError.isHidden = true
+        card1Stack.addArrangedSubview(hostError)
+
+        card1Stack.addArrangedSubview(divider())
+
+        portField.borderStyle = .none
+        portField.font = .systemFont(ofSize: 16)
+        portField.textAlignment = .right
+        portField.textColor = .secondaryLabel
+        portField.placeholder = "9999"
+        portField.keyboardType = .numberPad
+        portField.addTarget(self, action: #selector(portChanged), for: .editingChanged)
+        portField.addTarget(self, action: #selector(portEditingDidEnd), for: .editingDidEnd)
+        card1Stack.addArrangedSubview(labeledRow("Port", portField))
+
+        portError.font = .systemFont(ofSize: 11)
+        portError.textColor = .systemRed
+        portError.isHidden = true
+        card1Stack.addArrangedSubview(portError)
+
+        card1Stack.addArrangedSubview(divider())
+
+        let udpRow = UIStackView()
+        udpRow.axis = .horizontal
+        udpRow.spacing = 8
+        udpRow.alignment = .center
+        udpRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        udpRow.isLayoutMarginsRelativeArrangement = true
+        let udpLabel = UILabel()
+        udpLabel.text = "Send skeletal data"
+        udpLabel.font = .systemFont(ofSize: 16)
+        udpRow.addArrangedSubview(udpLabel)
+        let udpHint = UILabel()
+        udpHint.text = "(default: off)"
+        udpHint.font = .systemFont(ofSize: 13)
+        udpHint.textColor = .tertiaryLabel
+        udpRow.addArrangedSubview(udpHint)
+        udpRow.addArrangedSubview(UIView())
+        udpToggle.addTarget(self, action: #selector(udpToggled), for: .valueChanged)
+        udpRow.addArrangedSubview(udpToggle)
+        card1Stack.addArrangedSubview(udpRow)
+
+        NSLayoutConstraint.activate([
+            card1Stack.topAnchor.constraint(equalTo: card1.topAnchor, constant: 4),
+            card1Stack.bottomAnchor.constraint(equalTo: card1.bottomAnchor, constant: -4),
+            card1Stack.leadingAnchor.constraint(equalTo: card1.leadingAnchor, constant: 16),
+            card1Stack.trailingAnchor.constraint(equalTo: card1.trailingAnchor, constant: -16)
+        ])
+        udpStack.addArrangedSubview(card1)
+
+        // ── Video UDP ──
+        udpStack.addArrangedSubview(sectionHeader("VIDEO (20 FPS JPEG)"))
+
+        let card2 = cardView()
+        let card2Stack = UIStackView()
+        card2Stack.axis = .vertical
+        card2Stack.spacing = 0
+        card2Stack.translatesAutoresizingMaskIntoConstraints = false
+        card2.addSubview(card2Stack)
+
+        videoHostField.borderStyle = .none
+        videoHostField.font = .systemFont(ofSize: 16)
+        videoHostField.textAlignment = .right
+        videoHostField.textColor = .secondaryLabel
+        videoHostField.placeholder = "100.99.98.5"
+        videoHostField.keyboardType = .URL
+        videoHostField.autocapitalizationType = .none
+        videoHostField.autocorrectionType = .no
+        videoHostField.addTarget(self, action: #selector(videoHostChanged), for: .editingChanged)
+        videoHostField.addTarget(self, action: #selector(videoHostEditingDidEnd), for: .editingDidEnd)
+        card2Stack.addArrangedSubview(labeledRow("IP / Hostname", videoHostField))
+
+        videoHostError.font = .systemFont(ofSize: 11)
+        videoHostError.textColor = .systemRed
+        videoHostError.isHidden = true
+        card2Stack.addArrangedSubview(videoHostError)
+
+        card2Stack.addArrangedSubview(divider())
+
+        videoPortField.borderStyle = .none
+        videoPortField.font = .systemFont(ofSize: 16)
+        videoPortField.textAlignment = .right
+        videoPortField.textColor = .secondaryLabel
+        videoPortField.placeholder = "9998"
+        videoPortField.keyboardType = .numberPad
+        videoPortField.addTarget(self, action: #selector(videoPortChanged), for: .editingChanged)
+        videoPortField.addTarget(self, action: #selector(videoPortEditingDidEnd), for: .editingDidEnd)
+        card2Stack.addArrangedSubview(labeledRow("Port", videoPortField))
+
+        videoPortError.font = .systemFont(ofSize: 11)
+        videoPortError.textColor = .systemRed
+        videoPortError.isHidden = true
+        card2Stack.addArrangedSubview(videoPortError)
+
+        card2Stack.addArrangedSubview(divider())
+
+        let videoRow = UIStackView()
+        videoRow.axis = .horizontal
+        videoRow.spacing = 8
+        videoRow.alignment = .center
+        videoRow.layoutMargins = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
+        videoRow.isLayoutMarginsRelativeArrangement = true
+        let videoLabel = UILabel()
+        videoLabel.text = "Send video via UDP"
+        videoLabel.font = .systemFont(ofSize: 16)
+        videoRow.addArrangedSubview(videoLabel)
+        let videoHint = UILabel()
+        videoHint.text = "(default: off)"
+        videoHint.font = .systemFont(ofSize: 13)
+        videoHint.textColor = .tertiaryLabel
+        videoRow.addArrangedSubview(videoHint)
+        videoRow.addArrangedSubview(UIView())
+        udpVideoToggle.addTarget(self, action: #selector(udpVideoToggled), for: .valueChanged)
+        videoRow.addArrangedSubview(udpVideoToggle)
+        card2Stack.addArrangedSubview(videoRow)
+
+        NSLayoutConstraint.activate([
+            card2Stack.topAnchor.constraint(equalTo: card2.topAnchor, constant: 4),
+            card2Stack.bottomAnchor.constraint(equalTo: card2.bottomAnchor, constant: -4),
+            card2Stack.leadingAnchor.constraint(equalTo: card2.leadingAnchor, constant: 16),
+            card2Stack.trailingAnchor.constraint(equalTo: card2.trailingAnchor, constant: -16)
+        ])
+        udpStack.addArrangedSubview(card2)
     }
 
     // MARK: - WebSocket tab

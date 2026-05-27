@@ -79,7 +79,10 @@ if ! grep -q "BUILD SUCCEEDED" "$BUILD_LOG"; then
     echo -e "${RED}✗ 构建失败${NC}"
 
     if grep -q "errSecInternalComponent" "$BUILD_LOG"; then
-        echo -e "${YELLOW}签名失败。尝试解锁钥匙串或重启 Mac。${NC}"
+        echo -e "${YELLOW}签名失败，清理缓存后自动重试...${NC}"
+        rm "$BUILD_LOG"
+        rm -rf ~/Library/Developer/Xcode/DerivedData/collection_app-*
+        exec "$0" ${1:+"$1"}
     elif grep -q "No Accounts" "$BUILD_LOG"; then
         echo -e "${YELLOW}Xcode 未登录 Apple ID。${NC}"
     elif grep -q "device is locked" "$BUILD_LOG"; then

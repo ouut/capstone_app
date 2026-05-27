@@ -15,6 +15,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?)
         -> Bool {
+        let defaults = UserDefaults.standard
+        defaults.set(false, forKey: "ws_enabled")
+        defaults.set(false, forKey: "ws_video_enabled")
         return true
     }
 

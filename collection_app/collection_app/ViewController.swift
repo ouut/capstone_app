@@ -9,6 +9,7 @@ import UIKit
 import RealityKit
 import ARKit
 import Combine
+import Vision
 
 class ViewController: UIViewController, ARSessionDelegate {
 
@@ -33,6 +34,16 @@ class ViewController: UIViewController, ARSessionDelegate {
     // Snapshot
     private var snapshotDisplayLink: CADisplayLink?
     private var snapshotInFlight = false
+
+    // Hand tracking
+    private let handOverlayView = HandSkeletonOverlayView()
+    private let handPoseRequest: VNDetectHumanHandPoseRequest = {
+        let r = VNDetectHumanHandPoseRequest()
+        r.maximumHandCount = 2
+        return r
+    }()
+    private let handPoseQueue = DispatchQueue(label: "handpose", qos: .userInitiated)
+    private var handTrackingEnabled = false
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -97,11 +108,85 @@ class ViewController: UIViewController, ARSessionDelegate {
     // Capture camera frames for optional video recording and camera pose
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         latestCameraFrame = frame
+
+        guard handTrackingEnabled else {
+            if !handOverlayView.hands.isEmpty {
+                handOverlayView.hands = []
+            }
+            return
+        }
+
+        let pixelBuffer = frame.capturedImage
+        let orientation = imageOrientation(from: UIDevice.current.orientation)
+        let ts = Date().timeIntervalSince1970
+        let frameIdx = recordingManager.frameCount
+        handPoseQueue.async { [weak self] in
+            guard let self else { return }
+            let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
+            try? handler.perform([self.handPoseRequest])
+            guard let observations = self.handPoseRequest.results else { return }
+
+            var hands: [HandSkeletonOverlayView.HandData] = []
+            for obs in observations {
+                let chirality: HandSkeletonOverlayView.HandData.Chirality =
+                    obs.chirality == .left ? .left : .right
+                var points: [CGPoint?] = Array(repeating: nil, count: 21)
+
+                let allPoints = try? obs.recognizedPoints(.all)
+                for (jointName, pt) in allPoints ?? [:] {
+                    guard pt.confidence > 0.3 else { continue }
+                    let idx = HandSkeletonOverlayView.indexForJoint(jointName)
+                    guard idx >= 0, idx < 21 else { continue }
+                    points[idx] = self.normalizedToView(pt.location)
+                }
+
+                hands.append(HandSkeletonOverlayView.HandData(chirality: chirality, points: points))
+            }
+
+            DispatchQueue.main.async {
+                self.handOverlayView.hands = hands
+                let handTuples = hands.map { h -> (chirality: String, points: [CGPoint?]) in
+                    (h.chirality == .left ? "left" : "right", h.points)
+                }
+                self.recordingManager.recordHandFrame(timestamp: ts, frameIndex: frameIdx, hands: handTuples)
+            }
+        }
+    }
+
+    private func normalizedToView(_ point: CGPoint) -> CGPoint {
+        // Vision returns normalized coords with (0,0) at bottom-left.
+        // Flip Y for UIKit (0,0 at top-left), then scale to overlay bounds.
+        let bounds = handOverlayView.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return .zero }
+        return CGPoint(
+            x: point.x * bounds.width,
+            y: (1.0 - point.y) * bounds.height
+        )
+    }
+
+    private func imageOrientation(from deviceOrientation: UIDeviceOrientation) -> CGImagePropertyOrientation {
+        switch deviceOrientation {
+        case .portrait:           return .right
+        case .portraitUpsideDown: return .left
+        case .landscapeLeft:      return .up
+        case .landscapeRight:     return .down
+        default:                  return .right
+        }
     }
 
     // MARK: - Overlay UI
 
     private func setupOverlay() {
+        // ── Hand skeleton overlay ──
+        handOverlayView.translatesAutoresizingMaskIntoConstraints = false
+        arView.addSubview(handOverlayView)
+        NSLayoutConstraint.activate([
+            handOverlayView.topAnchor.constraint(equalTo: arView.topAnchor),
+            handOverlayView.bottomAnchor.constraint(equalTo: arView.bottomAnchor),
+            handOverlayView.leadingAnchor.constraint(equalTo: arView.leadingAnchor),
+            handOverlayView.trailingAnchor.constraint(equalTo: arView.trailingAnchor),
+        ])
+
         // ── Record button — iOS Camera-style ring + circle ──
         recordButton.backgroundColor = .clear
         recordButton.layer.cornerRadius = 36
@@ -189,6 +274,15 @@ class ViewController: UIViewController, ARSessionDelegate {
                 }
             }
             .store(in: &cancellables)
+
+        // Hand tracking toggle
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handTrackingEnabled = self?.defaults.bool(forKey: "hand_tracking_enabled") ?? false
+            }
+            .store(in: &cancellables)
+        handTrackingEnabled = defaults.bool(forKey: "hand_tracking_enabled")
 
         recordingManager.$elapsed.combineLatest(recordingManager.$frameCount)
             .receive(on: DispatchQueue.main)

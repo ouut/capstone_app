@@ -9,6 +9,20 @@ struct JointFrame {
     let cameraTransform: simd_float4x4
 }
 
+struct HandJointRecord {
+    let chirality: String    // "left" or "right"
+    let jointName: String
+    let posX: Float
+    let posY: Float
+    let posZ: Float         // confidence
+}
+
+struct HandFrame {
+    let timestamp: TimeInterval
+    let frameIndex: Int
+    let joints: [HandJointRecord]
+}
+
 struct RecordedFile {
     let url: URL
     let name: String
@@ -23,6 +37,7 @@ final class RecordingManager: NSObject, ObservableObject {
     @Published var elapsed: TimeInterval = 0
 
     private var frames: [JointFrame] = []
+    private var handFrames: [HandFrame] = []
     private var startTime: TimeInterval = 0
     private var index = 0
     private var lastSendTime: TimeInterval = 0
@@ -77,6 +92,7 @@ final class RecordingManager: NSObject, ObservableObject {
 
     func startRecording(saveCSV: Bool, saveVideo: Bool) {
         frames.removeAll()
+        handFrames.removeAll()
         index = 0
         frameCount = 0
         elapsed = 0
@@ -135,8 +151,9 @@ final class RecordingManager: NSObject, ObservableObject {
             }
         }
 
-        if saveCSV { exportCSV() }
+        if saveCSV { exportCSV(); exportHandCSV() }
         frames.removeAll()
+        handFrames.removeAll()
 
         webSocketSender.disconnect()
         tcpSender.disconnect()
@@ -251,6 +268,38 @@ final class RecordingManager: NSObject, ObservableObject {
         }
 
         index += 1
+    }
+
+    // MARK: - Hand CSV
+
+    private static let handJointNames: [String] = [
+        "wrist",
+        "thumbCMC", "thumbMP", "thumbIP", "thumbTip",
+        "indexMCP", "indexPIP", "indexDIP", "indexTip",
+        "middleMCP", "middlePIP", "middleDIP", "middleTip",
+        "ringMCP", "ringPIP", "ringDIP", "ringTip",
+        "littleMCP", "littlePIP", "littleDIP", "littleTip",
+    ]
+
+    func recordHandFrame(timestamp: TimeInterval, frameIndex: Int,
+                         hands: [(chirality: String, points: [CGPoint?])]) {
+        guard isRecording, csvEnabled else { return }
+
+        var records: [HandJointRecord] = []
+        for hand in hands {
+            for (i, pt) in hand.points.enumerated() {
+                guard let p = pt, i < Self.handJointNames.count else { continue }
+                records.append(HandJointRecord(
+                    chirality: hand.chirality,
+                    jointName: Self.handJointNames[i],
+                    posX: Float(p.x),
+                    posY: Float(p.y),
+                    posZ: 1.0
+                ))
+            }
+        }
+        guard !records.isEmpty else { return }
+        handFrames.append(HandFrame(timestamp: timestamp, frameIndex: frameIndex, joints: records))
     }
 
     // MARK: - Binary payload builder (shared by WS and UDP)
@@ -471,6 +520,28 @@ final class RecordingManager: NSObject, ObservableObject {
         }
         try? csv.write(to: csvURL, atomically: true, encoding: .utf8)
         onStatusChange?("CSV: \(csvURL.lastPathComponent)")
+    }
+
+    private func exportHandCSV() {
+        guard !handFrames.isEmpty else { return }
+
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = docs.appendingPathComponent("BodyMotionRecordings", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let csvURL = dir.appendingPathComponent("\(baseFileName())_hand.csv")
+
+        var csv = "timestamp,frame,joint,pos_x,pos_y,pos_z,rot_x,rot_y,rot_z,rot_w\n"
+        for frame in handFrames {
+            let t = String(format: "%.4f", frame.timestamp)
+            let idx = frame.frameIndex
+            for joint in frame.joints {
+                let name = "\(joint.chirality)_\(joint.jointName)"
+                csv += "\(t),\(idx),\(name),\(joint.posX),\(joint.posY),\(joint.posZ),0,0,0,1\n"
+            }
+        }
+        try? csv.write(to: csvURL, atomically: true, encoding: .utf8)
+        onStatusChange?("Hand CSV: \(csvURL.lastPathComponent)")
     }
 
     // MARK: - File listing

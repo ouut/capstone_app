@@ -9,6 +9,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let sessionNoteField = UITextField()
     private let saveCSVToggle = UISwitch()
     private let saveVideoToggle = UISwitch()
+    private let handTrackingToggle = UISwitch()
     private let skeletalFPSField = UITextField()
     private let hostField = UITextField()
     private let portField = UITextField()
@@ -61,6 +62,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
     private let kTCPPort = "tcp_port"
     private let kTCPEnabled = "tcp_enabled"
     private let kWSURL = "ws_url"
+    private let kHandTracking = "hand_tracking_enabled"
     private let kSkeletalFPS = "skeletal_fps"
     private let kWSEnabled = "ws_enabled"
 
@@ -241,6 +243,11 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         skeletalFPSField.widthAnchor.constraint(equalToConstant: 60).isActive = true
         fpsRow.addArrangedSubview(skeletalFPSField)
         card1Stack.addArrangedSubview(fpsRow)
+
+        card1Stack.addArrangedSubview(divider())
+
+        handTrackingToggle.addTarget(self, action: #selector(handTrackingToggled), for: .valueChanged)
+        card1Stack.addArrangedSubview(toggleRow("Hand Skeleton Overlay", handTrackingToggle))
 
         NSLayoutConstraint.activate([
             card1Stack.topAnchor.constraint(equalTo: card1.topAnchor, constant: 4),
@@ -676,6 +683,7 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
         sessionNoteField.text = defaults.string(forKey: kSessionNote) ?? ""
         saveCSVToggle.isOn = defaults.object(forKey: kSaveCSV) == nil ? true : defaults.bool(forKey: kSaveCSV)
         saveVideoToggle.isOn = defaults.bool(forKey: kSaveVideo)
+        handTrackingToggle.isOn = defaults.bool(forKey: kHandTracking)
         let fps = defaults.integer(forKey: kSkeletalFPS)
         skeletalFPSField.text = fps > 0 ? String(fps) : ""
         hostField.text = defaults.string(forKey: kHost) ?? ""
@@ -724,6 +732,10 @@ final class SettingsViewController: UIViewController, UITextFieldDelegate {
 
     @objc private func saveCSVToggled() {
         defaults.set(saveCSVToggle.isOn, forKey: kSaveCSV)
+    }
+
+    @objc private func handTrackingToggled() {
+        defaults.set(handTrackingToggle.isOn, forKey: kHandTracking)
     }
 
     @objc private func skeletalFPSChanged() {
